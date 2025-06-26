@@ -1,12 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
 
-module Items.AccLemmaItem (
-    module Items.AccLemmaItem
-) where
+module Items.AccLemmaItem where
 
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
@@ -25,13 +20,13 @@ import Items.CaseTestItem
 
 -- | An accountability lemma describes an accountability property that holds in the context of a theory
 data AccLemma = AccLemma
-       { _aName            :: String
-       , _aAttributes      :: [LemmaAttribute]
-       , _aCaseIdentifiers :: [CaseIdentifier]
-       , _aCaseTests       :: [CaseTest]
-       , _aFormula         :: SyntacticLNFormula
-       }
-       deriving( Eq, Ord, Show, Generic, NFData, Binary )
+  { _aName            :: String
+  , _aAttributes      :: [LemmaAttribute]
+  , _aCaseIdentifiers :: [CaseIdentifier]
+  , _aCaseTests       :: [CaseTest]
+  , _aFormula         :: SyntacticLNFormula
+  }
+  deriving (Eq, Ord, Show, Generic, NFData, Binary)
 
 $(mkLabels [''AccLemma])
 
@@ -39,19 +34,19 @@ defineCaseTests :: AccLemma -> [CaseTest] -> AccLemma
 defineCaseTests accLem caseTests = accLem { _aCaseTests = caseTests }
 
 prettyAccLemmaName :: HighlightDocument d => AccLemma -> d
-prettyAccLemmaName l = case L.get aAttributes l of
-      [] -> text (L.get aName l)
-      as -> text (L.get aName l) <->
-            (brackets $ fsep $ punctuate comma $ map prettyLemmaAttribute as)
+prettyAccLemmaName l = case l._aAttributes of
+      [] -> text l._aName
+      as -> text l._aName <->
+            brackets (fsep $ punctuate comma $ map prettyLemmaAttribute as)
 
 prettyAccLemma :: HighlightDocument d => AccLemma -> d
 prettyAccLemma alem =
     kwLemma <-> prettyAccLemmaName alem <> colon $-$
     (nest 2 $
-      text (intercalate ", " (L.get aCaseIdentifiers alem)) <-> account $-$
-      sep [  doubleQuotes $ prettySyntacticLNFormula $ L.get aFormula alem
+      text (intercalate ", " alem._aCaseIdentifiers) <-> account $-$
+      sep [  doubleQuotes $ prettySyntacticLNFormula alem._aFormula
           ]
     )
     where
-        account | length (L.get aCaseIdentifiers alem) == 1 = text "accounts for"
-                | otherwise                                 = text "accounts for"
+        account | length alem._aCaseIdentifiers == 1 = text "accounts for"
+                | otherwise                          = text "accounts for"

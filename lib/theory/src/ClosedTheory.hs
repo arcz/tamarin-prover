@@ -1,35 +1,21 @@
-module ClosedTheory (
-    module ClosedTheory
-) where
+module ClosedTheory where
 
-import Control.Basics
-import Control.Category
-import qualified Data.Set as S
-import qualified Extension.Data.Label as L
--- import qualified Data.Label.Total
+import Control.Arrow ((&&&))
+import Control.Monad (guard)
+
+import Data.Bifunctor (second)
+import Data.Monoid (Sum(..))
+import Data.Set qualified as S
 
 import Lemma
 import Rule
 import Safe
 import Theory.Model
 import Theory.Proof
+import Theory.Text.Pretty
+import Theory.Tools.InjectiveFactInstances
 import TheoryObject
-import Prelude hiding (id, (.))
-import Text.PrettyPrint.Highlight
 import Term.Macro
-
-
-import           Prelude                             hiding (id, (.))                 
-
-
--- import           Data.Typeable
-import           Data.Monoid                         (Sum(..))
-
--- import qualified Data.Label.Total
-
-import           Theory.Tools.InjectiveFactInstances
-
-import           Theory.Text.Pretty
 import OpenTheory
 import Pretty
 
@@ -73,237 +59,236 @@ getEitherLemmas = diffTheoryLemmas
 
 -- | The variants of the intruder rules.
 getIntrVariants :: ClosedTheory -> [IntrRuleAC]
-getIntrVariants = intruderRules . L.get (crcRules . thyCache)
+getIntrVariants = intruderRules . (._thyCache._crcRules)
 
 -- | The variants of the intruder rules.
 getIntrVariantsDiff :: Side -> ClosedDiffTheory -> [IntrRuleAC]
 getIntrVariantsDiff s
-  | s == LHS  = intruderRules . L.get (crcRules . diffThyCacheLeft)
-  | s == RHS  = intruderRules . L.get (crcRules . diffThyCacheRight)
-  | otherwise = error $ "The Side MUST always be LHS or RHS."
+  | s == LHS  = intruderRules . (._diffThyCacheLeft._crcRules)
+  | s == RHS  = intruderRules . (._diffThyCacheRight._crcRules)
+  | otherwise = error "The Side MUST always be LHS or RHS."
 
 -- | All protocol rules modulo E.
 getProtoRuleEs :: ClosedTheory -> [ProtoRuleE]
 -- we remove duplicates if they exist due to variant unfolding
-getProtoRuleEs = S.toList . S.fromList . map ((L.get oprRuleE) . openProtoRule) . theoryRules
+getProtoRuleEs = S.toList . S.fromList . map ((._oprRuleE) . openProtoRule) . theoryRules
 
 -- | All protocol rules modulo E.
 getProtoRuleEsDiff :: Side -> ClosedDiffTheory -> [ProtoRuleE]
 -- we remove duplicates if they exist due to variant unfolding
-getProtoRuleEsDiff s = S.toList . S.fromList . map ((L.get oprRuleE) . openProtoRule) . diffTheorySideRules s
+getProtoRuleEsDiff s = S.toList . S.fromList . map ((._oprRuleE) . openProtoRule) . diffTheorySideRules s
 
 -- | Get the proof context for a lemma of the closed theory.
 getProofContext :: Lemma a -> ClosedTheory -> ProofContext
 getProofContext l thy = ProofContext
-    ( L.get thySignature                       thy)
-    ( L.get (crcRules . thyCache)              thy)
-    ( L.get (crcInjectiveFactInsts . thyCache) thy)
+    thy._thySignature
+    thy._thyCache._crcRules
+    thy._thyCache._crcInjectiveFactInsts
     kind
-    ( L.get (cases . thyCache)                 thy)
+    (cases thy._thyCache)
     inductionHint
     specifiedHeuristic
     specifiedTactic
-    (toSystemTraceQuantifier $ L.get lTraceQuantifier l)
-    (L.get lName l)
-    ([ h | HideLemma h <- L.get lAttributes l])
-    ( L.get (verboseOption . thyOptions)         thy)
+    (toSystemTraceQuantifier l._lTraceQuantifier)
+    l._lName
+    [ h | HideLemma h <- l._lAttributes]
+    thy._thyOptions._verboseOption
     False
-    (all isSubtermRule  $ filter isDestrRule $ intruderRules $ L.get (crcRules . thyCache) thy)
-    (any isConstantRule $ filter isDestrRule $ intruderRules $ L.get (crcRules . thyCache) thy)
-    (L.get thyIsSapic thy)
+    (all isSubtermRule  $ filter isDestrRule $ intruderRules thy._thyCache._crcRules)
+    (any isConstantRule $ filter isDestrRule $ intruderRules thy._thyCache._crcRules)
+    thy._thyIsSapic
   where
     kind    = lemmaSourceKind l
-    cases   = case kind of RawSource     -> crcRawSources
-                           RefinedSource -> crcRefinedSources
+    cases   = case kind of RawSource     -> (._crcRawSources)
+                           RefinedSource -> (._crcRefinedSources)
     inductionHint
-      | any (`elem` [SourceLemma, InvariantLemma]) (L.get lAttributes l) = UseInduction
-      | otherwise                                                        = AvoidInduction
+      | any (`elem` [SourceLemma, InvariantLemma]) l._lAttributes = UseInduction
+      | otherwise                                                 = AvoidInduction
 
     -- Heuristic specified for the lemma > globally specified heuristic > default heuristic
     specifiedHeuristic = case lattr of
         Just lh -> Just lh
-        Nothing  -> case L.get thyHeuristic thy of
+        Nothing  -> case thy._thyHeuristic of
                     [] -> Nothing
                     gh -> Just (Heuristic gh)
       where
-        lattr = (headMay [Heuristic gr
-                    | LemmaHeuristic gr <- L.get lAttributes l])
+        lattr = headMay [Heuristic gr | LemmaHeuristic gr <- l._lAttributes]
 
     -- Tactic specified for the lemma
     specifiedTactic = case lattr of
         [] -> Nothing
         _  -> Just lattr
       where
-        lattr = L.get thyTactic thy
+        lattr = thy._thyTactic
 
 -- | Get the proof context for a lemma of the closed theory.
 getProofContextDiff :: Side -> Lemma a -> ClosedDiffTheory -> ProofContext
 getProofContextDiff s l thy = case s of
-  LHS -> ProofContext
-            ( L.get diffThySignature                           thy)
-            ( L.get (crcRules . diffThyCacheLeft)              thy)
-            ( L.get (crcInjectiveFactInsts . diffThyCacheLeft) thy)
-            kind
-            ( L.get (cases . diffThyCacheLeft)                 thy)
-            inductionHint
-            specifiedHeuristic
-            specifiedTactic
-            (toSystemTraceQuantifier $ L.get lTraceQuantifier l)
-            (L.get lName l)
-            ([ h | HideLemma h <- L.get lAttributes l])
-            ( L.get (verboseOption . diffThyOptions)         thy)
-            False
-            (all isSubtermRule  $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheLeft) thy)
-            (any isConstantRule $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheLeft) thy)
-            (L.get diffThyIsSapic thy)
-  RHS -> ProofContext
-            ( L.get diffThySignature                    thy)
-            ( L.get (crcRules . diffThyCacheRight)           thy)
-            ( L.get (crcInjectiveFactInsts . diffThyCacheRight) thy)
-            kind
-            ( L.get (cases . diffThyCacheRight)              thy)
-            inductionHint
-            specifiedHeuristic
-            specifiedTactic
-            (toSystemTraceQuantifier $ L.get lTraceQuantifier l)
-            (L.get lName l)
-            ([ h | HideLemma h <- L.get lAttributes l])
-            ( L.get (verboseOption . diffThyOptions)         thy)
-            False
-            (all isSubtermRule  $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheRight) thy)
-            (any isConstantRule $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheRight) thy)
-            (L.get diffThyIsSapic thy)
+  LHS ->
+    ProofContext
+      thy._diffThySignature
+      thy._diffThyCacheLeft._crcRules
+      thy._diffThyCacheLeft._crcInjectiveFactInsts
+      kind
+      (cases thy._diffThyCacheLeft)
+      inductionHint
+      specifiedHeuristic
+      specifiedTactic
+      (toSystemTraceQuantifier l._lTraceQuantifier)
+      l._lName
+      [ h | HideLemma h <- l._lAttributes]
+      thy._diffThyOptions._verboseOption
+      False
+      (all isSubtermRule  $ filter isDestrRule $ intruderRules thy._diffThyCacheLeft._crcRules)
+      (any isConstantRule $ filter isDestrRule $ intruderRules thy._diffThyCacheLeft._crcRules)
+      thy._diffThyIsSapic
+  RHS ->
+    ProofContext
+      thy._diffThySignature
+      thy._diffThyCacheRight._crcRules
+      thy._diffThyCacheRight._crcInjectiveFactInsts
+      kind
+      (cases thy._diffThyCacheRight)
+      inductionHint
+      specifiedHeuristic
+      specifiedTactic
+      (toSystemTraceQuantifier l._lTraceQuantifier)
+      l._lName
+      [ h | HideLemma h <- l._lAttributes]
+      thy._diffThyOptions._verboseOption
+      False
+      (all isSubtermRule  $ filter isDestrRule $ intruderRules thy._diffThyCacheRight._crcRules)
+      (any isConstantRule $ filter isDestrRule $ intruderRules thy._diffThyCacheRight._crcRules)
+      thy._diffThyIsSapic
   where
     kind    = lemmaSourceKind l
-    cases   = case kind of RawSource     -> crcRawSources
-                           RefinedSource -> crcRefinedSources
+    cases   = case kind of RawSource     -> (._crcRawSources)
+                           RefinedSource -> (._crcRefinedSources)
     inductionHint
-      | any (`elem` [SourceLemma, InvariantLemma]) (L.get lAttributes l) = UseInduction
-      | otherwise                                                        = AvoidInduction
+      | any (`elem` [SourceLemma, InvariantLemma]) l._lAttributes = UseInduction
+      | otherwise                                                 = AvoidInduction
     -- Heuristic specified for the lemma > globally specified heuristic > default heuristic
     specifiedHeuristic = case lattr of
         Just lh -> Just lh
-        Nothing  -> case L.get diffThyHeuristic thy of
+        Nothing  -> case thy._diffThyHeuristic of
                     [] -> Nothing
                     gh -> Just (Heuristic gh)
       where
-        lattr = (headMay [Heuristic gr
-                    | LemmaHeuristic gr <- L.get lAttributes l])
+        lattr = headMay [Heuristic gr | LemmaHeuristic gr <- l._lAttributes]
 
     specifiedTactic = case lattr of
         [] -> Nothing
         _  -> Just lattr
       where
-        lattr = L.get diffThyTactic thy
+        lattr = thy._diffThyTactic
 
 -- | Get the proof context for a diff lemma of the closed theory.
 getDiffProofContext :: DiffLemma a -> ClosedDiffTheory -> DiffProofContext
 getDiffProofContext l thy = DiffProofContext (proofContext LHS) (proofContext RHS)
-    (map (L.get dprRule) $ diffTheoryDiffRules thy) (L.get (crConstruct . crcRules . diffThyDiffCacheLeft) thy)
-    (L.get (crDestruct . crcRules . diffThyDiffCacheLeft) thy)
+    ((._dprRule) <$> diffTheoryDiffRules thy) thy._diffThyDiffCacheLeft._crcRules._crConstruct
+    thy._diffThyDiffCacheLeft._crcRules._crDestruct
     ((LHS, restrictionsLeft):[(RHS, restrictionsRight)]) gatherReusableLemmas
   where
-    items = L.get diffThyItems thy
+    items = thy._diffThyItems
     restrictionsLeft  = do EitherRestrictionItem (LHS, rstr) <- items
-                           return $ formulaToGuarded_ $ L.get rstrFormula rstr
+                           pure $ formulaToGuarded_ rstr._rstrFormula
     restrictionsRight = do EitherRestrictionItem (RHS, rstr) <- items
-                           return $ formulaToGuarded_ $ L.get rstrFormula rstr
+                           pure $ formulaToGuarded_ rstr._rstrFormula
     gatherReusableLemmas = do
         EitherLemmaItem (s, lem) <- items
         guard $    lemmaSourceKind lem <= RefinedSource
-                && ReuseDiffLemma `elem` L.get lAttributes lem
-                && AllTraces == L.get lTraceQuantifier lem
-        return $ (s, formulaToGuarded_ $ L.get lFormula lem)
+                && ReuseDiffLemma `elem` lem._lAttributes
+                && AllTraces == lem._lTraceQuantifier
+        pure (s, formulaToGuarded_ lem._lFormula)
     proofContext s   = case s of
         LHS -> ProofContext
-            ( L.get diffThySignature                    thy)
-            ( L.get (crcRules . diffThyDiffCacheLeft)           thy)
-            ( L.get (crcInjectiveFactInsts . diffThyDiffCacheLeft) thy)
+            thy._diffThySignature
+            thy._diffThyDiffCacheLeft._crcRules
+            thy._diffThyDiffCacheLeft._crcInjectiveFactInsts
             RefinedSource
-            ( L.get (crcRefinedSources . diffThyDiffCacheLeft)              thy)
+            thy._diffThyDiffCacheLeft._crcRefinedSources
             AvoidInduction
             specifiedHeuristic
             specifiedTactic
             ExistsNoTrace
-            ( L.get lDiffName l )
-            ([ h | HideLemma h <- L.get lDiffAttributes l])
-            ( L.get (verboseOption . diffThyOptions)         thy)
+            l._lDiffName
+            [ h | HideLemma h <- l._lDiffAttributes ]
+            thy._diffThyOptions._verboseOption
             True
-            (all isSubtermRule  $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheLeft) thy)
-            (any isConstantRule $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheLeft) thy)
-            (L.get diffThyIsSapic thy)
+            (all isSubtermRule  $ filter isDestrRule $ intruderRules thy._diffThyCacheLeft._crcRules)
+            (any isConstantRule $ filter isDestrRule $ intruderRules thy._diffThyCacheLeft._crcRules)
+            thy._diffThyIsSapic
         RHS -> ProofContext
-            ( L.get diffThySignature                    thy)
-            ( L.get (crcRules . diffThyDiffCacheRight)           thy)
-            ( L.get (crcInjectiveFactInsts . diffThyDiffCacheRight) thy)
+            thy._diffThySignature
+            thy._diffThyDiffCacheRight._crcRules
+            thy._diffThyDiffCacheRight._crcInjectiveFactInsts
             RefinedSource
-            ( L.get (crcRefinedSources . diffThyDiffCacheRight)              thy)
+            thy._diffThyDiffCacheRight._crcRefinedSources
             AvoidInduction
             specifiedHeuristic
             specifiedTactic
             ExistsNoTrace
-            ( L.get lDiffName l )
-            ([ h | HideLemma h <- L.get lDiffAttributes l])
-            ( L.get (verboseOption . diffThyOptions)         thy)
+            l._lDiffName
+            [ h | HideLemma h <- l._lDiffAttributes ]
+            thy._diffThyOptions._verboseOption
             True
-            (all isSubtermRule  $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheRight) thy)
-            (any isConstantRule $ filter isDestrRule $ intruderRules $ L.get (crcRules . diffThyCacheRight) thy)
-            (L.get diffThyIsSapic thy)
+            (all isSubtermRule  $ filter isDestrRule $ intruderRules thy._diffThyCacheRight._crcRules)
+            (any isConstantRule $ filter isDestrRule $ intruderRules thy._diffThyCacheRight._crcRules)
+            thy._diffThyIsSapic
 
     specifiedHeuristic = case lattr of
         Just lh -> Just lh
-        Nothing  -> case L.get diffThyHeuristic thy of
+        Nothing  -> case thy._diffThyHeuristic of
                     [] -> Nothing
                     gh -> Just (Heuristic gh)
       where
-        lattr = (headMay [Heuristic gr
-                    | LemmaHeuristic gr <- L.get lDiffAttributes l])
+        lattr = headMay [Heuristic gr | LemmaHeuristic gr <- l._lDiffAttributes]
 
     specifiedTactic = case lattr of
         [] -> Nothing
         _  -> Just lattr
       where
-        lattr = L.get diffThyTactic thy
+        lattr = thy._diffThyTactic
 
 -- | The facts with injective instances in this theory
 getInjectiveFactInsts :: ClosedTheory -> S.Set (FactTag, [[MonotonicBehaviour]])
-getInjectiveFactInsts = L.get (crcInjectiveFactInsts . thyCache)
+getInjectiveFactInsts thy = thy._thyCache._crcInjectiveFactInsts
 
 -- | The facts with injective instances in this theory
 getDiffInjectiveFactInsts :: Side -> Bool -> ClosedDiffTheory -> S.Set (FactTag, [[MonotonicBehaviour]])
-getDiffInjectiveFactInsts s isdiff = case (s, isdiff) of
-           (LHS, False) -> L.get (crcInjectiveFactInsts . diffThyCacheLeft)
-           (RHS, False) -> L.get (crcInjectiveFactInsts . diffThyCacheRight)
-           (LHS, True)  -> L.get (crcInjectiveFactInsts . diffThyDiffCacheLeft)
-           (RHS, True)  -> L.get (crcInjectiveFactInsts . diffThyDiffCacheRight)
+getDiffInjectiveFactInsts s isdiff thy = case (s, isdiff) of
+  (LHS, False) -> thy._diffThyCacheLeft._crcInjectiveFactInsts
+  (RHS, False) -> thy._diffThyCacheRight._crcInjectiveFactInsts
+  (LHS, True)  -> thy._diffThyDiffCacheLeft._crcInjectiveFactInsts
+  (RHS, True)  -> thy._diffThyDiffCacheRight._crcInjectiveFactInsts
 
 -- | The classified set of rules modulo AC in this theory.
 getClassifiedRules :: ClosedTheory -> ClassifiedRules
-getClassifiedRules = L.get (crcRules . thyCache)
+getClassifiedRules thy = thy._thyCache._crcRules
 
 -- | The classified set of rules modulo AC in this theory.
 getDiffClassifiedRules :: Side -> Bool -> ClosedDiffTheory -> ClassifiedRules
-getDiffClassifiedRules s isdiff = case (s, isdiff) of
-           (LHS, False) -> L.get (crcRules . diffThyCacheLeft)
-           (RHS, False) -> L.get (crcRules . diffThyCacheRight)
-           (LHS, True)  -> L.get (crcRules . diffThyDiffCacheLeft)
-           (RHS, True)  -> L.get (crcRules . diffThyDiffCacheRight)
+getDiffClassifiedRules s isdiff thy = case (s, isdiff) of
+  (LHS, False) -> thy._diffThyCacheLeft._crcRules
+  (RHS, False) -> thy._diffThyCacheRight._crcRules
+  (LHS, True)  -> thy._diffThyDiffCacheLeft._crcRules
+  (RHS, True)  -> thy._diffThyDiffCacheRight._crcRules
 
 -- | The precomputed case distinctions.
 getSource :: SourceKind -> ClosedTheory -> [Source]
-getSource RawSource     = L.get (crcRawSources . thyCache)
-getSource RefinedSource = L.get (crcRefinedSources .   thyCache)
+getSource RawSource     = (._thyCache._crcRawSources)
+getSource RefinedSource = (._thyCache._crcRefinedSources)
 
 -- | The precomputed case distinctions.
 getDiffSource :: Side -> Bool -> SourceKind -> ClosedDiffTheory -> [Source]
-getDiffSource LHS False RawSource     = L.get (crcRawSources .     diffThyCacheLeft)
-getDiffSource RHS False RawSource     = L.get (crcRawSources .     diffThyCacheRight)
-getDiffSource LHS False RefinedSource = L.get (crcRefinedSources . diffThyCacheLeft)
-getDiffSource RHS False RefinedSource = L.get (crcRefinedSources . diffThyCacheRight)
-getDiffSource LHS True  RawSource     = L.get (crcRawSources .     diffThyDiffCacheLeft)
-getDiffSource RHS True  RawSource     = L.get (crcRawSources .     diffThyDiffCacheRight)
-getDiffSource LHS True  RefinedSource = L.get (crcRefinedSources . diffThyDiffCacheLeft)
-getDiffSource RHS True  RefinedSource = L.get (crcRefinedSources . diffThyDiffCacheRight)
+getDiffSource LHS False RawSource     = (._diffThyCacheLeft._crcRawSources)
+getDiffSource RHS False RawSource     = (._diffThyCacheRight._crcRawSources)
+getDiffSource LHS False RefinedSource = (._diffThyCacheLeft._crcRefinedSources)
+getDiffSource RHS False RefinedSource = (._diffThyCacheRight._crcRefinedSources)
+getDiffSource LHS True  RawSource     = (._diffThyDiffCacheLeft._crcRawSources)
+getDiffSource RHS True  RawSource     = (._diffThyDiffCacheRight._crcRawSources)
+getDiffSource LHS True  RefinedSource = (._diffThyDiffCacheLeft._crcRefinedSources)
+getDiffSource RHS True  RefinedSource = (._diffThyDiffCacheRight._crcRefinedSources)
 
 -- construction
 ---------------
@@ -334,7 +319,7 @@ prettyClosedProtoRule cru =
   -- We have a rule that only has one trivial variant, and without added annotations
   -- Hence showing the initial rule modulo E
     (prettyProtoRuleE ruE) $--$
-    (nest 2 $ prettyLoopBreakers (L.get rInfo ruAC) $-$
+    (nest 2 $ prettyLoopBreakers ruAC._rInfo $-$
      multiComment_ ["has exactly the trivial AC variant"])
   else
     if ruleName ruAC == ruleName ruE then
@@ -343,36 +328,36 @@ prettyClosedProtoRule cru =
       -- hence showing the annotated rule as if it was a rule mod E
       -- note that we can do that, as we unfolded variants
         (prettyProtoRuleACasE ruAC) $--$
-        (nest 2 $ prettyLoopBreakers (L.get rInfo ruAC) $-$
+        (nest 2 $ prettyLoopBreakers ruAC._rInfo $-$
          multiComment_ ["has exactly the trivial AC variant"])
       else
       -- Here we have a rule with one or multiple variants, but without other annotations
       -- Hence showing the rule mod E with commented variants
         (prettyProtoRuleE ruE) $--$
-        (nest 2 $ prettyLoopBreakers (L.get rInfo ruAC) $-$
+        (nest 2 $ prettyLoopBreakers ruAC._rInfo $-$
          (multiComment $ prettyProtoRuleAC ruAC))
     else
     -- Here we have a variant of a rule that has multiple variants.
     -- Hence showing only the variant as a rule modulo AC. This should not
     -- normally be used, as it breaks the ability to re-import.
       (prettyProtoRuleAC ruAC) $--$
-      (nest 3 $ prettyLoopBreakers (L.get rInfo ruAC) $-$
+      (nest 3 $ prettyLoopBreakers ruAC._rInfo $-$
           (multiComment_ ["variant of"]) $-$
           (multiComment $ prettyProtoRuleE ruE)
       )
  where
-    ruAC      = L.get cprRuleAC cru
-    ruE       = L.get cprRuleE cru
+    ruAC      = cru._cprRuleAC
+    ruE       = cru._cprRuleE
 
 -- -- | Pretty print an closed rule.
 -- prettyClosedEitherRule :: HighlightDocument d => (Side, ClosedProtoRule) -> d
 -- prettyClosedEitherRule (s, cru) =
 --     text ((show s) ++ ": ") <>
 --     (prettyProtoRuleE ruE) $--$
---     (nest 2 $ prettyLoopBreakers (L.get rInfo ruAC) $-$ ppRuleAC)
+--     (nest 2 $ prettyLoopBreakers ruAC._rInfo $-$ ppRuleAC)
 --   where
---     ruAC = L.get cprRuleAC cru
---     ruE  = L.get cprRuleE cru
+--     ruAC = cru._cprRuleAC
+--     ruE  = cru._cprRuleE
 --     ppRuleAC
 --       | isTrivialProtoVariantAC ruAC ruE = multiComment_ ["has exactly the trivial AC variant"]
 --       | otherwise                        = multiComment $ prettyProtoRuleAC ruAC
@@ -383,7 +368,7 @@ prettyClosedTheory thy = if containsManualRuleVariants mergedRules
     then
       prettyTheory prettySignatureWithMaude
                        ppInjectiveFactInsts
-                       -- (prettyIntrVariantsSection . intruderRules . L.get crcRules)
+                       -- (prettyIntrVariantsSection . intruderRules . (._crcRules))
                        prettyOpenProtoRuleAsClosedRule
                        prettyIncrementalProof
                        emptyString
@@ -391,26 +376,28 @@ prettyClosedTheory thy = if containsManualRuleVariants mergedRules
     else
       prettyTheory prettySignatureWithMaude
                ppInjectiveFactInsts
-               -- (prettyIntrVariantsSection . intruderRules . L.get crcRules)
+               -- (prettyIntrVariantsSection . intruderRules . (._crcRules))
                prettyClosedProtoRule
                prettyIncrementalProof
                emptyString
                thy
   where
-    items = L.get thyItems thy
+    items = thy._thyItems
     mergedRules = mergeOpenProtoRules $ map (mapTheoryItem openProtoRule id) items
     thy' :: Theory SignatureWithMaude ClosedRuleCache OpenProtoRule IncrementalProof ()
-    thy' = Theory {_thyName=(L.get thyName thy)
-            ,_thyInFile=(L.get thyInFile thy)
-            ,_thyHeuristic=(L.get thyHeuristic thy)
-            ,_thyTactic=(L.get thyTactic thy)
-            ,_thySignature=(L.get thySignature thy)
-            ,_thyCache=(L.get thyCache thy)
-            ,_thyItems = mergedRules
-            ,_thyOptions =(L.get thyOptions thy)
-            ,_thyIsSapic = (L.get thyIsSapic thy)}
+    thy' = Theory
+      { _thyName = thy._thyName
+      ,_thyInFile = thy._thyInFile
+      ,_thyHeuristic = thy._thyHeuristic
+      ,_thyTactic = thy._thyTactic
+      ,_thySignature = thy._thySignature
+      ,_thyCache = thy._thyCache
+      ,_thyItems = mergedRules
+      ,_thyOptions = thy._thyOptions
+      ,_thyIsSapic = thy._thyIsSapic
+      }
     ppInjectiveFactInsts crc =
-        case S.toList $ L.get crcInjectiveFactInsts crc of
+        case S.toList crc._crcInjectiveFactInsts  of
             []   -> emptyDoc
             tags -> multiComment $ sep
                       [ text "looping facts with injective instances:"
@@ -422,38 +409,40 @@ prettyClosedDiffTheory thy = if containsManualRuleVariantsDiff mergedRules
     then
       prettyDiffTheory prettySignatureWithMaude
                  ppInjectiveFactInsts
-                 -- (prettyIntrVariantsSection . intruderRules . L.get crcRules)
-                 (\_ -> emptyDoc) --prettyClosedEitherRule
+                 -- (prettyIntrVariantsSection . intruderRules . (._crcRules))
+                 (const emptyDoc) --prettyClosedEitherRule
                  prettyIncrementalDiffProof
                  prettyIncrementalProof
                  thy'
     else
         prettyDiffTheory prettySignatureWithMaude
                    ppInjectiveFactInsts
-                   -- (prettyIntrVariantsSection . intruderRules . L.get crcRules)
-                   (\_ -> emptyDoc) --prettyClosedEitherRule
+                   -- (prettyIntrVariantsSection . intruderRules . (._crcRules))
+                   (const emptyDoc) --prettyClosedEitherRule
                    prettyIncrementalDiffProof
                    prettyIncrementalProof
                    thy
   where
-    items = L.get diffThyItems thy
+    items = thy._diffThyItems
     mergedRules = mergeLeftRightRulesDiff $ mergeOpenProtoRulesDiff $
-       map (mapDiffTheoryItem id (\(x, y) -> (x, (openProtoRule y))) id id) items
+       map (mapDiffTheoryItem id (second openProtoRule) id id) items
     thy' :: DiffTheory SignatureWithMaude ClosedRuleCache DiffProtoRule OpenProtoRule IncrementalDiffProof IncrementalProof
-    thy' = DiffTheory {_diffThyName=(L.get diffThyName thy)
-            ,_diffThyInFile=(L.get diffThyInFile thy)
-            ,_diffThyHeuristic=(L.get diffThyHeuristic thy)
-            ,_diffThyTactic=(L.get diffThyTactic thy)
-            ,_diffThySignature=(L.get diffThySignature thy)
-            ,_diffThyCacheLeft=(L.get diffThyCacheLeft thy)
-            ,_diffThyCacheRight=(L.get diffThyCacheRight thy)
-            ,_diffThyDiffCacheLeft=(L.get diffThyDiffCacheLeft thy)
-            ,_diffThyDiffCacheRight=(L.get diffThyDiffCacheRight thy)
-            ,_diffThyItems = mergedRules
-            ,_diffThyOptions =(L.get diffThyOptions thy)
-            ,_diffThyIsSapic = (L.get diffThyIsSapic thy)}
+    thy' = DiffTheory
+      { _diffThyName = thy._diffThyName
+      , _diffThyInFile = thy._diffThyInFile
+      , _diffThyHeuristic = thy._diffThyHeuristic
+      , _diffThyTactic = thy._diffThyTactic
+      , _diffThySignature = thy._diffThySignature
+      , _diffThyCacheLeft = thy._diffThyCacheLeft
+      , _diffThyCacheRight = thy._diffThyCacheRight
+      , _diffThyDiffCacheLeft = thy._diffThyDiffCacheLeft
+      , _diffThyDiffCacheRight = thy._diffThyDiffCacheRight
+      , _diffThyItems = mergedRules
+      , _diffThyOptions = thy._diffThyOptions
+      , _diffThyIsSapic = thy._diffThyIsSapic
+      }
     ppInjectiveFactInsts crc =
-        case S.toList $ L.get crcInjectiveFactInsts crc of
+        case S.toList crc._crcInjectiveFactInsts of
             []   -> emptyDoc
             tags -> multiComment $ sep
                       [ text "looping facts with injective instances:"
@@ -464,7 +453,7 @@ prettyClosedSummary thy =
     vcat lemmaSummaries
   where
     lemmaSummaries = do
-        LemmaItem lem  <- L.get thyItems thy
+        LemmaItem lem  <- thy._thyItems
         -- Note that here we are relying on the invariant that all proof steps
         -- with a 'Just' annotation follow from the application of
         -- 'execProofMethod' to their parent and are valid in the sense that
@@ -480,10 +469,10 @@ prettyClosedSummary thy =
         --
         -- TODO: The whole consruction seems a bit hacky. Think of a more
         -- principled constrution with better correctness guarantees.
-        let (status, Sum siz) = foldProof proofStepSummary $ L.get lProof lem
-            quantifier = (toSystemTraceQuantifier $ L.get lTraceQuantifier lem)
-            analysisType = parens $ prettyTraceQuantifier $ L.get lTraceQuantifier lem
-        return $ text (L.get lName lem) <-> analysisType <> colon <->
+        let (status, Sum siz) = foldProof proofStepSummary lem._lProof
+            quantifier = toSystemTraceQuantifier lem._lTraceQuantifier
+            analysisType = parens $ prettyTraceQuantifier lem._lTraceQuantifier
+        return $ text lem._lName <-> analysisType <> colon <->
                  text (showProofStatus quantifier status) <->
                  parens (integer siz <-> text "steps")
 
@@ -491,10 +480,10 @@ prettyClosedSummary thy =
 
 prettyClosedDiffSummary :: Document d => ClosedDiffTheory -> d
 prettyClosedDiffSummary thy =
-    (vcat lemmaSummaries) $$ (vcat diffLemmaSummaries)
+    vcat lemmaSummaries $$ vcat diffLemmaSummaries
   where
     lemmaSummaries = do
-        EitherLemmaItem (s, lem)  <- L.get diffThyItems thy
+        EitherLemmaItem (s, lem) <- thy._diffThyItems
         -- Note that here we are relying on the invariant that all proof steps
         -- with a 'Just' annotation follow from the application of
         -- 'execProofMethod' to their parent and are valid in the sense that
@@ -510,15 +499,15 @@ prettyClosedDiffSummary thy =
         --
         -- TODO: The whole consruction seems a bit hacky. Think of a more
         -- principled constrution with better correctness guarantees.
-        let (status, Sum siz) = foldProof proofStepSummary $ L.get lProof lem
-            quantifier = (toSystemTraceQuantifier $ L.get lTraceQuantifier lem)
-            analysisType = parens $ prettyTraceQuantifier $ L.get lTraceQuantifier lem
-        return $ text (show s) <-> text ": " <-> text (L.get lName lem) <-> analysisType <> colon <->
+        let (status, Sum siz) = foldProof proofStepSummary lem._lProof
+            quantifier = toSystemTraceQuantifier lem._lTraceQuantifier
+            analysisType = parens $ prettyTraceQuantifier lem._lTraceQuantifier
+        return $ text (show s) <-> text ": " <-> text lem._lName <-> analysisType <> colon <->
                  text (showProofStatus quantifier status) <->
                  parens (integer siz <-> text "steps")
 
     diffLemmaSummaries = do
-        DiffLemmaItem (lem)  <- L.get diffThyItems thy
+        DiffLemmaItem lem <- thy._diffThyItems
         -- Note that here we are relying on the invariant that all proof steps
         -- with a 'Just' annotation follow from the application of
         -- 'execProofMethod' to their parent and are valid in the sense that
@@ -534,8 +523,8 @@ prettyClosedDiffSummary thy =
         --
         -- TODO: The whole consruction seems a bit hacky. Think of a more
         -- principled constrution with better correctness guarantees.
-        let (status, Sum siz) = foldDiffProof diffProofStepSummary $ L.get lDiffProof lem
-        return $ text "DiffLemma: " <-> text (L.get lDiffName lem) <-> colon <->
+        let (status, Sum siz) = foldDiffProof diffProofStepSummary lem._lDiffProof
+        return $ text "DiffLemma: " <-> text lem._lDiffName <-> colon <->
                  text (showDiffProofStatus status) <->
                  parens (integer siz <-> text "steps")
 
@@ -546,14 +535,14 @@ prettyClosedDiffSummary thy =
 -- | Render the results of the precomputations, for --precompute-only
 prettyPrecomputation ::  Document d => ClosedTheory -> d
 prettyPrecomputation thy = foldr1 ($-$)
-    [ 
+    [
       ruleLink
     , reqCasesLink "Raw sources:" RawSource
     , reqCasesLink "Refined sources:" RefinedSource
     ]
   where
     rules          = getClassifiedRules thy
-    rulesInfo      = text $ show $ length $ L.get crProtocol rules
+    rulesInfo      = text $ show $ length rules._crProtocol
     casesInfo kind = nCases <> comma <-> text chainInfo
       where
         cases   = getSource kind thy
@@ -564,7 +553,7 @@ prettyPrecomputation thy = foldr1 ($-$)
 
     overview n p   = n <-> p
     ruleLinkMsg         = text $ "Multiset rewriting rules" ++
-                          (if null(theoryRestrictions thy) then "" else " and restrictions") ++ ":"
+                          (if null (theoryRestrictions thy) then "" else " and restrictions") ++ ":"
     ruleLink            = overview ruleLinkMsg rulesInfo
     reqCasesLink name k = overview (text name) (casesInfo k)
 
@@ -588,7 +577,7 @@ prettyDiffPrecomputation thy = foldr1 ($-$)
     ]
   where
     rules s isdiff     = getDiffClassifiedRules s isdiff thy
-    rulesInfo s isdiff = text $ show $ length $ L.get crProtocol (rules s isdiff)
+    rulesInfo s isdiff = text $ show $ length (rules s isdiff)._crProtocol
     casesInfo s kind isdiff = nCases <> comma <-> text chainInfo
       where
         cases   = getDiffSource s isdiff kind thy
@@ -600,6 +589,6 @@ prettyDiffPrecomputation thy = foldr1 ($-$)
     overview n p   = n <-> p
     ruleLink s isdiff    = overview (ruleLinkMsg s isdiff) (rulesInfo s isdiff)
     ruleLinkMsg s isdiff = text $ show s ++ ": Multiset rewriting rules" ++
-                           (if null(diffTheorySideRestrictions s thy) then "" else " and restrictions") ++ (if isdiff then " [Diff]" else "") ++ ":"
+                           (if null (diffTheorySideRestrictions s thy) then "" else " and restrictions") ++ (if isdiff then " [Diff]" else "") ++ ":"
 
     reqCasesLink s name k isdiff = overview (text name) (casesInfo s k isdiff)

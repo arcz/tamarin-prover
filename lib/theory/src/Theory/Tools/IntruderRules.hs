@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ViewPatterns     #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
   -- spurious warnings for view patterns
@@ -25,27 +24,24 @@ module Theory.Tools.IntruderRules (
   , isDPMultRule
   ) where
 
-import           Control.Basics hiding (empty)
-import           Control.Monad.Reader
+import Control.Basics hiding (empty)
+import Control.Monad.Reader
 
-import           Data.List
-import qualified Data.Set                          as S
-import           Data.ByteString.Char8 (ByteString, append, pack, empty)
+import Data.List
+import Data.Set qualified as S
+import Data.ByteString.Char8 (ByteString, append, pack, empty)
 
-import           Extension.Data.Label
+import Utils.Misc
 
-import           Utils.Misc
+import Term.Maude.Signature
+import Term.Narrowing.Variants.Compute
+import Term.Rewriting.Norm
+import Term.SubtermRule
+import Term.Subsumption
+import Term.Positions
 
-import           Term.Maude.Signature
-import           Term.Narrowing.Variants.Compute
-import           Term.Rewriting.Norm
-import           Term.SubtermRule
-import           Term.Subsumption
-import           Term.Positions
+import Theory.Model
 
-import           Theory.Model
-
--- import           Debug.Trace
 
 -- Variants of intruder deduction rules
 ----------------------------------------------------------------------
@@ -63,7 +59,7 @@ rule coerce:
 
 rule pub:
    [ ] --[ KU( $x ) ]-> [ KU( $x ) ]
-   
+
 rule gen_fresh:
    [ Fr( ~x ) ] --[ KU( ~x ) ]-> [ KU( ~x ) ]
 
@@ -81,13 +77,13 @@ rule iequality:
 --   included independently of the message theory
 specialIntruderRules :: Bool -> [IntrRuleAC]
 specialIntruderRules diff =
-    [ kuRule CoerceRule      [kdFact x_var]                 (x_var)         [] 
+    [ kuRule CoerceRule      [kdFact x_var]                 (x_var)         []
     , kuRule PubConstrRule   []                             (x_pub_var)     [(x_pub_var)]
     , kuRule FreshConstrRule [freshFact x_fresh_var] (x_fresh_var)          []
     , Rule ISendRule [kuFact x_var]  [inFact x_var] [kLogFact x_var]        []
     , Rule IRecvRule [outFact x_var] [kdFact x_var] []                      []
     ] ++
-    if diff 
+    if diff
        then [ Rule IEqualityRule [kuFact x_var, kdFact x_var]  [] [] [] ]
        else []
   where
@@ -148,11 +144,11 @@ destructionRules bool (CtxtStRule lhs@(viewTerm -> FApp _ _) (StRhs (pos:[]) rhs
                 else []
     go _      (viewTerm -> FApp (NoEq (_,(_,Private,_))) _) _     _ _  = []
     go _      (viewTerm -> Lit _)                         (_:_) _ _  =
-        error "IntruderRules.destructionRules: impossible, position invalid"   
-     
-destructionRules bool (CtxtStRule lhs (StRhs (pos:posit) rhs)) 
-    | (bool || (frees rhs /= []) || (containsPrivate rhs)) = 
-       destructionRules bool (CtxtStRule lhs (StRhs [pos] rhs)) 
+        error "IntruderRules.destructionRules: impossible, position invalid"
+
+destructionRules bool (CtxtStRule lhs (StRhs (pos:posit) rhs))
+    | (bool || (frees rhs /= []) || (containsPrivate rhs)) =
+       destructionRules bool (CtxtStRule lhs (StRhs [pos] rhs))
            ++ destructionRules bool (CtxtStRule lhs (StRhs posit rhs))
 destructionRules _ _ = []
 
@@ -163,14 +159,14 @@ privateConstructorEquations rs = case rs of
     (CtxtStRule lhs (StRhs _ (viewTerm -> FApp (NoEq (vname,(0,Private,_))) _))):xs
           -> (lhs, vname):(privateConstructorEquations xs)
     _:xs  -> privateConstructorEquations xs
-    
+
 -- given equations with private constructors on the RHS and a list of private function names x,
 -- returns the list of all such constructors such that the LHS only contains public functions or functions in x
 derivablePrivateConstants :: [(LNTerm, ByteString)] -> [ByteString] -> [ByteString]
 derivablePrivateConstants eqs x =
     if any (containsNoPrivateExcept x) (map fst eqs)
         then
-            derivablePrivateConstants (filter (\(l, _) -> not $ containsNoPrivateExcept x l) eqs) (x ++ map snd (filter (\(l, _) -> containsNoPrivateExcept x l) eqs)) 
+            derivablePrivateConstants (filter (\(l, _) -> not $ containsNoPrivateExcept x l) eqs) (x ++ map snd (filter (\(l, _) -> containsNoPrivateExcept x l) eqs))
         else
             x
 
@@ -185,8 +181,8 @@ privateConstructorRules rules = map createRule $ derivablePrivateConstants (priv
 
 -- | Simple removal of subsumed rules for auto-generated subterm intruder rules.
 minimizeIntruderRules :: Bool -> [IntrRuleAC] -> [IntrRuleAC]
-minimizeIntruderRules diff rules = 
-    filter (\x -> not $ isDoublePremiseRule x) 
+minimizeIntruderRules diff rules =
+    filter (\x -> not $ isDoublePremiseRule x)
       $ if diff then rules else go [] rules
   where
     go checked [] = reverse checked
@@ -197,9 +193,9 @@ minimizeIntruderRules diff rules =
                           (checked++unchecked)
                    then checked
                    else r:checked
-    
+
     -- We assume that the KD-Fact is the first fact, which is the case in destructionRules above
-    isDoublePremiseRule (Rule _ ((Fact KDFact _ [t]):prems) concs _ _) = 
+    isDoublePremiseRule (Rule _ ((Fact KDFact _ [t]):prems) concs _ _) =
         frees concs == []
          && not (any containsPrivate (t:(concat $ map getFactTerms prems)))
          && isMsgVar t && any (==(kuFact t)) prems
@@ -210,7 +206,7 @@ minimizeIntruderRules diff rules =
 subtermIntruderRules :: Bool -> MaudeSig -> [IntrRuleAC]
 subtermIntruderRules diff maudeSig =
    minimizeIntruderRules diff $ concatMap (destructionRules diff) (S.toList $ stRules maudeSig)
-     ++ constructionRules (stFunSyms maudeSig) ++ privateConstructorRules (S.toList $ stRules maudeSig) 
+     ++ constructionRules (stFunSyms maudeSig) ++ privateConstructorRules (S.toList $ stRules maudeSig)
 
 -- | @constructionRules fSig@ returns the construction rules for the given
 -- function signature @fSig@
@@ -288,19 +284,19 @@ dhIntruderRules diff = reader $ \hnd -> minimizeIntruderRules diff $
 variantsIntruder :: MaudeHandle -> ([LNSubstVFresh] -> [LNSubstVFresh]) -> Bool -> IntrRuleAC -> [IntrRuleAC]
 variantsIntruder hnd minimizeVariants applyFilters ru = go [] $ reverse $ do
     let ruleTerms = concatMap factTerms
-                              (get rPrems ru++get rConcs ru++get rActs ru)
+                              (ru._rPrems ++ ru._rConcs ++ ru._rActs)
     fsigma <- minimizeVariants $ computeVariants (fAppList ruleTerms) `runReader` hnd
     let sigma     = freshToFree fsigma `evalFreshAvoiding` ruleTerms
         ruvariant = normRule' (apply sigma ru) `runReader` hnd
-    guard (not applyFilters || frees (get rConcs ruvariant) /= [] &&
+    guard (not applyFilters || frees ruvariant._rConcs /= [] &&
            -- ground terms are already deducible by applying construction rules
            (not applyFilters || ruvariant /= ru) &&
            -- this is a construction rule
-           (get rConcs ruvariant) \\ (get rPrems ruvariant) /= []
+           ruvariant._rConcs \\ ruvariant._rPrems /= []
            -- The conclusion is included in the premises
            )
 
-    case concatMap factTerms $ get rConcs ruvariant of
+    case concatMap factTerms ruvariant._rConcs  of
         [viewTerm -> FApp (AC Mult) _] ->
             fail "Rules with product conclusion are redundant"
         _                              -> return ruvariant
@@ -343,7 +339,7 @@ mkDUnionRule t_prems t_conc =
 ------------------------------------------------------------------------------
 
 xorIntruderRules ::  [IntrRuleAC]
-xorIntruderRules = [mkDXorRule [x_var, y_var] [y_var, z_var] x_xor_z, 
+xorIntruderRules = [mkDXorRule [x_var, y_var] [y_var, z_var] x_xor_z,
                     mkDXorRule [x_var, y_var] [y_var] x_var,
                     mkCXorRule x_var y_var x_xor_y,
                     zeroConstructor]
@@ -441,7 +437,7 @@ bpVariantsIntruder hnd ru = do
 ------------------------------------------------------------------------------
 
 isDRule :: ByteString -> Rule (RuleInfo t IntrRuleACInfo) -> Bool
-isDRule ruString ru = case get rInfo ru of
+isDRule ruString ru = case ru._rInfo of
     IntrInfo (DestrRule n _ _ _) | n == (append (pack "_") ruString) -> True
     _                                                                -> False
 

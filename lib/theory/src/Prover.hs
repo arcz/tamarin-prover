@@ -1,37 +1,30 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Rank2Types #-}
+module Prover where
 
-module Prover (
-    module Prover
-) where
+import Prelude                             hiding (id, (.))
 
-import           Prelude                             hiding (id, (.))
+import Data.Maybe
+import Data.Set qualified as S
 
-import           Data.Maybe
-import qualified Data.Set                            as S
+import Control.Basics
+import Control.Category
+import Control.Monad.Reader
+import Control.Monad.State qualified as MS
+import Control.Parallel.Strategies
 
-import           Control.Basics
-import           Control.Category
-import           Control.Monad.Reader
-import qualified Control.Monad.State                 as MS
-import           Control.Parallel.Strategies
+import Extension.Data.Label hiding (get)
+import Extension.Data.Label qualified as L
 
-import           Extension.Data.Label                hiding (get)
-import qualified Extension.Data.Label                as L
--- import qualified Data.Label.Total
+import Theory.Model
+import Theory.Proof hiding (checkProof)
+import Theory.Text.Pretty
+import Theory.Tools.AbstractInterpretation
+import Theory.Tools.LoopBreakers
+import Lemma
+import ClosedTheory
+import TheoryObject
+import OpenTheory
 
-
-import           Theory.Model
-import           Theory.Proof
-import           Theory.Text.Pretty
-import           Theory.Tools.AbstractInterpretation
-import           Theory.Tools.LoopBreakers
-import           Lemma
-import           ClosedTheory
-import           TheoryObject
-import           OpenTheory
-
-import           Theory.Constraint.Solver.Sources     as Sources (IntegerParameters(..))
+import Theory.Constraint.Solver.Sources as Sources (IntegerParameters(..))
 
 -- | Close a theory by closing its associated rule set and checking the proof
 -- skeletons and caching AC variants as well as precomputed case distinctions.
@@ -44,9 +37,8 @@ closeTheory :: FilePath         -- ^ Path to the Maude executable.
             -> Bool             -- ^ Try to auto-generate sources lemmas
             -> IO ClosedTheory
 closeTheory maudePath thy0 autosources = do
-    sig <- toSignatureWithMaude maudePath $ L.get thySignature thy0
-    return $ closeTheoryWithMaude sig thy0 autosources True
-
+    sig <- toSignatureWithMaude maudePath thy0._thySignature
+    pure $ closeTheoryWithMaude sig thy0 autosources True
 
 
 -- | Close a theory by closing its associated rule set and checking the proof
@@ -60,8 +52,8 @@ closeDiffTheory :: FilePath         -- ^ Path to the Maude executable.
             -> Bool
             -> IO ClosedDiffTheory
 closeDiffTheory maudePath thy0 autoSources = do
-    sig <- toSignatureWithMaude maudePath $ L.get diffThySignature thy0
-    return $ closeDiffTheoryWithMaude sig thy0 autoSources
+    sig <- toSignatureWithMaude maudePath thy0._diffThySignature
+    pure $ closeDiffTheoryWithMaude sig thy0 autoSources
 
 -- | Close a diff theory given a maude signature. This signature must be valid for
 -- the given theory.
@@ -70,19 +62,19 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
   if autoSources && (containsPartialDeconstructions (cacheLeft items) || containsPartialDeconstructions (cacheRight items))
     then
       proveDiffTheory (const True) checkProof checkDiffProof
-        (DiffTheory (L.get diffThyName thy0) (L.get diffThyInFile thy0) h t sig (cacheLeft items') (cacheRight items') (diffCacheLeft items') (diffCacheRight items') items' (L.get diffThyOptions thy0) (_diffThyIsSapic thy0))
+        (DiffTheory thy0._diffThyName thy0._diffThyInFile h t sig (cacheLeft items') (cacheRight items') (diffCacheLeft items') (diffCacheRight items') items' thy0._diffThyOptions (_diffThyIsSapic thy0))
     else
       proveDiffTheory (const True) checkProof checkDiffProof
-        (DiffTheory (L.get diffThyName thy0) (L.get diffThyInFile thy0) h t sig (cacheLeft items) (cacheRight items) (diffCacheLeft items) (diffCacheRight items) items (L.get diffThyOptions thy0) (_diffThyIsSapic thy0))
+        (DiffTheory thy0._diffThyName thy0._diffThyInFile h t sig (cacheLeft items) (cacheRight items) (diffCacheLeft items) (diffCacheRight items) items thy0._diffThyOptions (_diffThyIsSapic thy0))
 
   where
-    parameters = Sources.IntegerParameters (L.get (openChainsLimit . diffThyOptions) thy0) (L.get (saturationLimit . diffThyOptions) thy0) True
-    h              = L.get diffThyHeuristic thy0
-    t              = L.get diffThyTactic thy0
-    diffCacheLeft  its = closeRuleCache parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its)  (L.get diffThyDiffCacheLeft  thy0) (L.get (verboseOption . diffThyOptions) thy0) True (L.get diffThyIsSapic thy0)
-    diffCacheRight its = closeRuleCache parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) (L.get diffThyDiffCacheRight thy0) (L.get (verboseOption . diffThyOptions) thy0) True (L.get diffThyIsSapic thy0)
-    cacheLeft  its = closeRuleCache parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its)  (L.get diffThyCacheLeft  thy0) (L.get (verboseOption . diffThyOptions) thy0) False (L.get diffThyIsSapic thy0)
-    cacheRight its = closeRuleCache parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) (L.get diffThyCacheRight thy0) (L.get (verboseOption . diffThyOptions) thy0) False (L.get diffThyIsSapic thy0)
+    parameters = Sources.IntegerParameters thy0._diffThyOptions._openChainsLimit thy0._diffThyOptions._saturationLimit True
+    h              = thy0._diffThyHeuristic
+    t              = thy0._diffThyTactic
+    diffCacheLeft  its = closeRuleCache parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its) thy0._diffThyDiffCacheLeft thy0._diffThyOptions._verboseOption True thy0._diffThyIsSapic
+    diffCacheRight its = closeRuleCache parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) thy0._diffThyDiffCacheRight thy0._diffThyOptions._verboseOption True thy0._diffThyIsSapic
+    cacheLeft  its = closeRuleCache parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its) thy0._diffThyCacheLeft thy0._diffThyOptions._verboseOption False thy0._diffThyIsSapic
+    cacheRight its = closeRuleCache parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) thy0._diffThyCacheRight thy0._diffThyOptions._verboseOption False thy0._diffThyIsSapic
 
     checkProof = checkAndExtendProver (sorryProver Nothing)
     checkDiffProof = checkAndExtendDiffProver (sorryDiffProver Nothing)
@@ -91,9 +83,9 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
     rightOpenRules = map (addProtoRuleLabel . getRightProtoRule) diffRules
 
     -- Maude / Signature handle
-    hnd = L.get sigmMaudeHandle sig
+    hnd = sig._sigMaudeInfo
 
-    theoryItems = L.get diffThyItems thy0 ++ map (\x -> EitherRuleItem (LHS, x)) leftOpenRules ++ map (\x -> EitherRuleItem (RHS, x)) rightOpenRules
+    theoryItems = thy0._diffThyItems ++ map (\x -> EitherRuleItem (LHS, x)) leftOpenRules ++ map (\x -> EitherRuleItem (RHS, x)) rightOpenRules
     -- Close all theory items: in parallel (especially useful for variants)
     --
     -- NOTE that 'rdeepseq' is OK here, as the proof has not yet been checked
@@ -136,12 +128,12 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
 
     -- extract source restrictions and lemmas
     restrictionsLeft  = do EitherRestrictionItem (LHS, rstr) <- items
-                           return $ formulaToGuarded_ $ L.get rstrFormula rstr
+                           return $ formulaToGuarded_ rstr._rstrFormula
     restrictionsRight = do EitherRestrictionItem (RHS, rstr) <- items
-                           return $ formulaToGuarded_ $ L.get rstrFormula rstr
+                           return $ formulaToGuarded_ rstr._rstrFormula
     typAsms its = do EitherLemmaItem (_, lem) <- its
                      guard (isSourceLemma lem)
-                     return $ formulaToGuarded_ $ L.get lFormula lem
+                     pure $ formulaToGuarded_ lem._lFormula
 
     -- extract protocol rules
     leftClosedRules  :: [DiffTheoryItem DiffProtoRule ClosedProtoRule IncrementalDiffProof s] -> [ClosedProtoRule]
@@ -151,9 +143,9 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
     errClose  = error "closeDiffTheory"
 
     addSolvingLoopBreakers = useAutoLoopBreakersAC
-        (liftToItem $ enumPrems . L.get cprRuleAC)
-        (liftToItem $ enumConcs . L.get cprRuleAC)
-        (liftToItem $ getDisj . L.get (pracVariants . rInfo . cprRuleAC))
+        (liftToItem $ enumPrems . (._cprRuleAC))
+        (liftToItem $ enumConcs . (._cprRuleAC))
+        (liftToItem $ getDisj . (._cprRuleAC._rInfo._pracVariants))
         addBreakers
       where
         liftToItem f (EitherRuleItem (_, ru)) = f ru
@@ -172,27 +164,27 @@ closeTheoryWithMaude sig thy0 autoSources showSaturation =
   if autoSources && containsPartialDeconstructions (cache items)
     then
         proveTheory (const True) checkProof
-      $ Theory (L.get thyName thy0) (L.get thyInFile thy0) h t sig (cache items') items' (L.get thyOptions thy0) (L.get thyIsSapic thy0)
+      $ Theory thy0._thyName thy0._thyInFile h t sig (cache items') items' thy0._thyOptions thy0._thyIsSapic
     else
         proveTheory (const True) checkProof
-      $ Theory (L.get thyName thy0) (L.get thyInFile thy0) h t sig (cache items) items (L.get thyOptions thy0) (L.get thyIsSapic thy0)
+      $ Theory thy0._thyName thy0._thyInFile h t sig (cache items) items thy0._thyOptions thy0._thyIsSapic
   where
-    parameters = Sources.IntegerParameters (L.get (openChainsLimit . thyOptions) thy0) (L.get (saturationLimit . thyOptions) thy0) showSaturation
-    h          = L.get thyHeuristic thy0
-    t          = L.get thyTactic thy0
-    forcedInjFacts = L.get forcedInjectiveFacts $ L.get thyOptions thy0
-    cache its = closeRuleCache parameters restrictions (typAsms its) forcedInjFacts sig (rules its) (L.get thyCache thy0) (L.get (verboseOption . thyOptions) thy0) False (L.get thyIsSapic thy0)
+    parameters = Sources.IntegerParameters thy0._thyOptions._openChainsLimit thy0._thyOptions._saturationLimit showSaturation
+    h          = thy0._thyHeuristic
+    t          = thy0._thyTactic
+    forcedInjFacts = thy0._thyOptions._forcedInjectiveFacts
+    cache its = closeRuleCache parameters restrictions (typAsms its) forcedInjFacts sig (rules its) thy0._thyCache thy0._thyOptions._verboseOption False thy0._thyIsSapic
     checkProof = checkAndExtendProver (sorryProver Nothing)
 
     -- Maude / Signature handle
-    hnd = L.get sigmMaudeHandle sig
+    hnd = sig._sigMaudeInfo
 
     -- Close all theory items: in parallel (especially useful for variants)
     --
     -- NOTE that 'rdeepseq' is OK here, as the proof has not yet been checked
     -- and therefore no constraint systems will be unnecessarily cached.
     (items, _solveRel, _breakers) = (`runReader` hnd) $ addSolvingLoopBreakers $ unfoldClosedRules
-       ((closeTheoryItem <$> L.get thyItems thy0) `using` parList rdeepseq)
+       ((closeTheoryItem <$> thy0._thyItems) `using` parList rdeepseq)
     closeTheoryItem = foldTheoryItem
        (RuleItem . closeProtoRule hnd (theoryMacros thy0))
        RestrictionItem
@@ -227,10 +219,10 @@ closeTheoryWithMaude sig thy0 autoSources showSaturation =
 
     -- extract source restrictions and lemmas
     restrictions = do RestrictionItem rstr <- items
-                      return $ formulaToGuarded_ $ L.get rstrFormula rstr
+                      pure $ formulaToGuarded_ rstr._rstrFormula
     typAsms its  = do LemmaItem lem <- its
                       guard (isSourceLemma lem)
-                      return $ formulaToGuarded_ $ L.get lFormula lem
+                      pure $ formulaToGuarded_ lem._lFormula
 
     -- extract protocol rules
     rules :: [TheoryItem ClosedProtoRule IncrementalProof s] -> [ClosedProtoRule]
@@ -238,9 +230,9 @@ closeTheoryWithMaude sig thy0 autoSources showSaturation =
     errClose = error "closeTheory"
 
     addSolvingLoopBreakers = useAutoLoopBreakersAC
-        (liftToItem $ enumPrems . L.get cprRuleAC)
-        (liftToItem $ enumConcs . L.get cprRuleAC)
-        (liftToItem $ getDisj . L.get (pracVariants . rInfo . cprRuleAC))
+        (liftToItem $ enumPrems . (._cprRuleAC))
+        (liftToItem $ enumConcs . (._cprRuleAC))
+        (liftToItem $ getDisj . (._cprRuleAC._rInfo._pracVariants))
         addBreakers
       where
         liftToItem f (RuleItem ru) = f ru
@@ -275,7 +267,7 @@ proveTheory selector prover thy =
       | otherwise    = lem
       where
         ctxt    = getProofContext lem thy
-        sys     = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
+        sys     = mkSystem ctxt (theoryRestrictions thy) preItems lem._lFormula
         add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
@@ -289,7 +281,7 @@ proveDiffTheory selector prover diffprover thy =
     modify diffThyItems ((`MS.evalState` []) . mapM prove) thy
   where
     prove item = case item of
-      EitherLemmaItem (s, l0) -> do l <- MS.gets (\x -> EitherLemmaItem (s, (proveLemma s l0 x)))
+      EitherLemmaItem (s, l0) -> do l <- MS.gets (\x -> EitherLemmaItem (s, proveLemma s l0 x))
                                     MS.modify (l :)
                                     return l
       DiffLemmaItem l0        -> do l' <- MS.gets (\x -> DiffLemmaItem (proveDiffLemma l0 x))
@@ -302,7 +294,7 @@ proveDiffTheory selector prover diffprover thy =
       | otherwise    = lem
       where
         ctxt    = getProofContextDiff s lem thy
-        sys     = mkSystemDiff s ctxt (diffTheoryRestrictions thy) preItems $ L.get lFormula lem
+        sys     = mkSystemDiff s ctxt (diffTheoryRestrictions thy) preItems lem._lFormula
         add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
     proveDiffLemma lem preItems
@@ -321,21 +313,21 @@ mkSystem ctxt restrictions previousItems =
     -- they do not change the considered set of traces. This is the key
     -- difference between lemmas and restrictions.
     addLemmas
-  . formulaToSystem (map (formulaToGuarded_ . L.get rstrFormula) restrictions)
-                    (L.get pcSourceKind ctxt)
-                    (L.get pcTraceQuantifier ctxt) False
+  . formulaToSystem (map (formulaToGuarded_ . (._rstrFormula)) restrictions)
+                    ctxt._pcSourceKind
+                    ctxt._pcTraceQuantifier False
   where
     addLemmas sys =
-        insertLemmas (gatherReusableLemmas $ L.get sSourceKind sys) sys
+        insertLemmas (gatherReusableLemmas sys._sSourceKind) sys
 
     gatherReusableLemmas kind = do
         LemmaItem lem <- previousItems
         guard $    lemmaSourceKind lem <= kind
-                && ReuseLemma `elem` L.get lAttributes lem
-                && AllTraces == L.get lTraceQuantifier lem
-                && (L.get lName lem) `notElem` (L.get pcHiddenLemmas ctxt)
-                && "ALL" `notElem` (L.get pcHiddenLemmas ctxt)
-        return $ formulaToGuarded_ $ L.get lFormula lem
+                && ReuseLemma `elem` lem._lAttributes
+                && AllTraces == lem._lTraceQuantifier
+                && lem._lName `notElem` ctxt._pcHiddenLemmas
+                && "ALL" `notElem` ctxt._pcHiddenLemmas
+        pure $ formulaToGuarded_ lem._lFormula
 
 -- | Construct a constraint system for verifying the given formula.
 mkSystemDiff :: Side -> ProofContext -> [(Side, Restriction)] -> [DiffTheoryItem r r2 p p2]
@@ -345,20 +337,20 @@ mkSystemDiff s ctxt restrictions previousItems =
     -- they do not change the considered set of traces. This is the key
     -- difference between lemmas and restrictions.
     addLemmas
-  . formulaToSystem (map (formulaToGuarded_ . L.get rstrFormula) restrictions')
-                    (L.get pcSourceKind ctxt)
-                    (L.get pcTraceQuantifier ctxt) False
+  . formulaToSystem (map (formulaToGuarded_ . (._rstrFormula)) restrictions')
+                    ctxt._pcSourceKind
+                    ctxt._pcTraceQuantifier False
   where
     restrictions' = foldr (\(s', a) l -> if s == s' then l ++ [a] else l) [] restrictions
     addLemmas sys =
-        insertLemmas (gatherReusableLemmas $ L.get sSourceKind sys) sys
+        insertLemmas (gatherReusableLemmas sys._sSourceKind) sys
 
     gatherReusableLemmas kind = do
         EitherLemmaItem (s'', lem) <- previousItems
         guard $    lemmaSourceKind lem <= kind && s==s''
-                && ReuseLemma `elem` L.get lAttributes lem
-                && AllTraces == L.get lTraceQuantifier lem
-        return $ formulaToGuarded_ $ L.get lFormula lem
+                && ReuseLemma `elem` lem._lAttributes
+                && AllTraces == lem._lTraceQuantifier
+        pure $ formulaToGuarded_ lem._lFormula
 
 -- | Construct a diff constraint system.
 mkDiffSystem :: DiffProofContext -> [(Side, Restriction)] -> [DiffTheoryItem r r2 p p2]
@@ -376,9 +368,9 @@ applyPartialEvaluation evalStyle autosources thy0 =
       (removeTranslationItems (L.modify thyItems replaceProtoRules (openTheory thy0)))
       autosources True
   where
-    sig          = L.get thySignature thy0
+    sig          = thy0._thySignature
     ruEs         = getProtoRuleEs thy0
-    (st', ruEs') = (`runReader` L.get sigmMaudeHandle sig) $
+    (st', ruEs') = (`runReader` sig._sigMaudeInfo) $
                    partialEvaluation evalStyle ruEs
 
     replaceProtoRules [] = []
@@ -404,11 +396,11 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
     closeDiffTheoryWithMaude sig
       (L.modify diffThyItems replaceProtoRules (openDiffTheory thy0)) autoSources
   where
-    sig            = L.get diffThySignature thy0
+    sig            = thy0._diffThySignature
     ruEs s         = getProtoRuleEsDiff s thy0
-    (stL', ruEsL') = (`runReader` L.get sigmMaudeHandle sig) $
+    (stL', ruEsL') = (`runReader` sig._sigMaudeInfo) $
                      partialEvaluation evalStyle (ruEs LHS)
-    (stR', ruEsR') = (`runReader` L.get sigmMaudeHandle sig) $
+    (stR', ruEsR') = (`runReader` sig._sigMaudeInfo) $
                      partialEvaluation evalStyle (ruEs RHS)
 
     replaceProtoRules [] = []
@@ -454,7 +446,7 @@ openDiffTheory :: ClosedDiffTheory -> OpenDiffTheory
 openDiffTheory  (DiffTheory n f h t sig c1 c2 c3 c4 items opts sapic) =
     -- We merge duplicate rules if they were split into variants
     DiffTheory n f h t (toSignaturePure sig) (openRuleCache c1) (openRuleCache c2) (openRuleCache c3) (openRuleCache c4)
-      (mergeOpenProtoRulesDiff $ map (mapDiffTheoryItem id (\(x, y) -> (x, (openProtoRule y))) (\(DiffLemma s a p) -> (DiffLemma s a (incrementalToSkeletonDiffProof p))) (\(x, Lemma a p m b c d e) -> (x, Lemma a p m b c d (incrementalToSkeletonProof e)))) items)
+      (mergeOpenProtoRulesDiff $ map (mapDiffTheoryItem id (\(x, y) -> (x, (openProtoRule y))) (\(DiffLemma s a p) -> DiffLemma s a (incrementalToSkeletonDiffProof p)) (\(x, Lemma a p m b c d e) -> (x, Lemma a p m b c d (incrementalToSkeletonProof e)))) items)
       opts sapic
 
 ------------------------------------------------------------------------------
@@ -466,17 +458,17 @@ type LemmaRef = String
 
 -- | Resolve a path in a theory.
 lookupLemmaProof :: LemmaRef -> ClosedTheory -> Maybe IncrementalProof
-lookupLemmaProof name thy = L.get lProof <$> lookupLemma name thy
+lookupLemmaProof name thy = (._lProof) <$> lookupLemma name thy
 
 
 -- | Resolve a path in a diff theory.
 lookupLemmaProofDiff :: Side -> LemmaRef -> ClosedDiffTheory -> Maybe IncrementalProof
-lookupLemmaProofDiff s name thy = L.get lProof <$> lookupLemmaDiff s name thy
+lookupLemmaProofDiff s name thy = (._lProof) <$> lookupLemmaDiff s name thy
 
 
 -- | Resolve a path in a diff theory.
 lookupDiffLemmaProof :: LemmaRef -> ClosedDiffTheory -> Maybe IncrementalDiffProof
-lookupDiffLemmaProof name thy = L.get lDiffProof <$> lookupDiffLemma name thy
+lookupDiffLemmaProof name thy = (._lDiffProof) <$> lookupDiffLemma name thy
 
 
 -- | Modify the proof at the given lemma ref, if there is one. Fails if the
@@ -485,12 +477,12 @@ modifyLemmaProof :: Prover -> LemmaRef -> ClosedTheory -> Maybe ClosedTheory
 modifyLemmaProof prover name thy =
     modA thyItems changeItems thy
   where
-    findLemma (LemmaItem lem) = name == L.get lName lem
+    findLemma (LemmaItem lem) = name == lem._lName
     findLemma _               = False
 
     change preItems (LemmaItem lem) = do
          let ctxt = getProofContext lem thy
-             sys  = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
+             sys  = mkSystem ctxt (theoryRestrictions thy) preItems lem._lFormula
          lem' <- modA lProof (runProver prover ctxt 0 sys) lem
          return $ LemmaItem lem'
     change _ _ = error "LemmaProof: change: impossible"
@@ -508,14 +500,14 @@ modifyLemmaProofDiff :: Side -> Prover -> LemmaRef -> ClosedDiffTheory -> Maybe 
 modifyLemmaProofDiff s prover name thy =
     modA diffThyItems (changeItems s) thy
   where
-    findLemma s'' (EitherLemmaItem (s''', lem)) = (name == L.get lName lem) && (s''' == s'')
+    findLemma s'' (EitherLemmaItem (s''', lem)) = (name == lem._lName) && (s''' == s'')
     findLemma _ _                               = False
 
     change s'' preItems (EitherLemmaItem (s''', lem)) = if s''==s'''
         then
           do
             let ctxt = getProofContextDiff s'' lem thy
-                sys  = mkSystemDiff s'' ctxt (diffTheoryRestrictions thy) preItems $ L.get lFormula lem
+                sys  = mkSystemDiff s'' ctxt (diffTheoryRestrictions thy) preItems lem._lFormula
             lem' <- modA lProof (runProver prover ctxt 0 sys) lem
             return $ EitherLemmaItem (s''', lem')
         else
@@ -535,7 +527,7 @@ modifyDiffLemmaProof :: DiffProver -> LemmaRef -> ClosedDiffTheory -> Maybe Clos
 modifyDiffLemmaProof prover name thy = -- error $ show $ -- name ++ show thy
      modA diffThyItems changeItems thy
   where
-    findLemma (DiffLemmaItem lem) = (name == L.get lDiffName lem)
+    findLemma (DiffLemmaItem lem) = name == lem._lDiffName
     findLemma  _                  = False
 
     change preItems (DiffLemmaItem lem) =

@@ -1,7 +1,4 @@
-{-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE ViewPatterns     #-}
--- FIXME: Better solution for absTerm
-{-# LANGUAGE FlexibleContexts #-}
 -- |
 -- Copyright   : (c) 2012 Benedikt Schmidt & Simon Meier
 -- License     : GPL v3 (see LICENSE)
@@ -19,20 +16,19 @@ module Theory.Tools.AbstractInterpretation (
 
   ) where
 
-import           Debug.Trace
+import Debug.Trace
 
-import           Control.Basics
-import           Control.Monad.Bind
-import           Control.Monad.Reader
+import Control.Basics
+import Control.Monad.Bind
+import Control.Monad.Reader
 
-import           Data.Label
-import           Data.List
-import qualified Data.Set             as S
--- import           Data.Traversable     (traverse)
+import Data.Label
+import Data.List
+import Data.Set qualified as S
 
-import           Term.Substitution
-import           Theory.Model
-import           Theory.Text.Pretty
+import Term.Substitution
+import Theory.Model
+import Theory.Text.Pretty
 
 
 ------------------------------------------------------------------------------

@@ -21,9 +21,6 @@ module Theory (
   , addProcessDef
   , lookupProcessDef
   , lookupFunctionTypingInfo
-  , pName
-  , pBody
-  , pVars
   , addFunctionTypingInfo
   , addMacros
   , addDiffMacros
@@ -51,13 +48,9 @@ module Theory (
   , ExportInfo(..)
   , addExportInfo
   , lookupExportInfo
-  , eTag
-  , eText
 
   -- * Case Tests
   , CaseTest(..)
-  , cName
-  , cFormula
   , caseTestToPredicate
   , defineCaseTests
 
@@ -233,8 +226,6 @@ module Theory (
 
   , getSource
   , getDiffSource
-  -- ** Alice
-  , Theory
   -- ** Proving
   , ProofSkeleton
   , DiffProofSkeleton
@@ -281,49 +272,6 @@ module Theory (
 
   ) where
 
--- import           Debug.Trace
-
-import           Prelude                             hiding (id, (.))
-
---import           GHC.Generics                        (Generic)
--- import           Data.Typeable
---import           Data.Binary
---import           Data.List
---import           Data.Maybe
---import           Data.Either
---import           Data.Monoid                         (Sum(..))
---import qualified Data.Set                            as S
-
---import           Control.Basics
---import           Control.Category
---import           Control.DeepSeq
---import           Control.Monad.Reader
---import qualified Control.Monad.State                 as MS
---import           Control.Parallel.Strategies
-
---import           Extension.Data.Label                hiding (get)
---import qualified Extension.Data.Label                as L
---import qualified Data.Label.Point
---import qualified Data.Label.Poly
--- import qualified Data.Label.Total
-
-{-import           Safe                                (headMay, atMay)
-
-import           Theory.Model
-import           Theory.Sapic
-import           Theory.Sapic.Print
-import           Theory.Proof
-import           Theory.Text.Pretty
-import           Theory.Tools.AbstractInterpretation
-import           Theory.Tools.InjectiveFactInstances
-import           Theory.Tools.LoopBreakers
-import           Theory.Tools.RuleVariants
-import           Theory.Tools.IntruderRules         
-
-import           Term.Positions
-
-import           Utils.Misc-}
-
 import ClosedTheory
 import Items.ExportInfo
 import OpenTheory
@@ -333,5 +281,3 @@ import Theory.Model
 import Theory.Proof
 import Theory.Syntactic.Predicate
 import TheoryObject
-import Prelude hiding (id, (.))
-

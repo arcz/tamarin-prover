@@ -1,10 +1,7 @@
-module Pretty (
-    module Pretty
-) where
+module Pretty where
 
-import           Prelude                             hiding (id, (.))
-import           Theory.Proof
-import           Theory.Text.Pretty
+import Theory.Proof
+import Theory.Text.Pretty
 
 ------------------------------------------------------------------------------
 -- Pretty printing

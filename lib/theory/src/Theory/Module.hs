@@ -1,12 +1,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Theory.Module
-  ( ModuleType (..),
-    description,
-  )
-where
+  ( ModuleType (..)
+  , description,
+  ) where
 
 import Control.DeepSeq (NFData)
 import Data.Binary (Binary)

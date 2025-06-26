@@ -1,26 +1,26 @@
 module Theory.ProofSkeleton
-  ( ProofSkeleton,
-    DiffProofSkeleton,
-    skeletonToIncrementalProof,
-    incrementalToSkeletonProof,
-    skeletonToIncrementalDiffProof,
-    unprovenLemma,
-    skeletonLemma,
-    unprovenDiffLemma,
-    skeletonDiffLemma,
-    incrementalToSkeletonDiffProof,
-  prettyIncrementalProof, prettyIncrementalDiffProof)
-where
+  ( ProofSkeleton
+  , DiffProofSkeleton
+  , skeletonToIncrementalProof
+  , incrementalToSkeletonProof
+  , skeletonToIncrementalDiffProof
+  , unprovenLemma
+  , skeletonLemma
+  , unprovenDiffLemma
+  , skeletonDiffLemma
+  , incrementalToSkeletonDiffProof
+  , prettyIncrementalProof
+  , prettyIncrementalDiffProof
+  ) where
 
-import           Prelude                             hiding (id, (.))
 
-import           Theory.Proof
+import Data.Maybe
+import Control.Monad (void)
+
 import Lemma
 import Theory.Model
-import Text.PrettyPrint.Highlight
+import Theory.Proof
 import Theory.Text.Pretty
-import Control.Category
-import Data.Maybe
 
 ------------------------------------------------------------------------------
 -- Specific proof types
@@ -37,7 +37,7 @@ skeletonToIncrementalProof = fmap (fmap (const Nothing))
 -- | Convert an incremental proof to a proof skeleton by dropping all
 -- annotations.
 incrementalToSkeletonProof :: IncrementalProof -> ProofSkeleton
-incrementalToSkeletonProof = fmap (fmap (const ()))
+incrementalToSkeletonProof = fmap void
 
 -- | Proof skeletons are used to represent proofs in open theories.
 type DiffProofSkeleton    = DiffProof ()
@@ -50,7 +50,7 @@ skeletonToIncrementalDiffProof = fmap (fmap (const Nothing))
 -- | Convert an incremental proof to a proof skeleton by dropping all
 -- annotations.
 incrementalToSkeletonDiffProof :: IncrementalDiffProof -> DiffProofSkeleton
-incrementalToSkeletonDiffProof = fmap (fmap (const ()))
+incrementalToSkeletonDiffProof = fmap void
 
 -- Lemma construction/modification
 ----------------------------------

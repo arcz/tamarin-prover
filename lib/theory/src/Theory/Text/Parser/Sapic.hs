@@ -8,23 +8,18 @@
 -- Parsing SAPIC processes. See the MANUAL for a high-level description of
 -- the syntax.
 
-{-# LANGUAGE TupleSections #-}
-module Theory.Text.Parser.Sapic(
-    process
-    , processDef
-    , toplevelprocess
-    , equivLemma
-    , diffEquivLemma
-)
-where
+module Theory.Text.Parser.Sapic
+  ( process
+  , processDef
+  , toplevelprocess
+  , equivLemma
+  , diffEquivLemma
+  ) where
 
 import           Prelude                    hiding (id, (.))
 import qualified Data.ByteString.Char8      as BC
-import           Data.Label
--- import           Data.Monoid                hiding (Last)
 import qualified Data.Set                   as S
 import           Control.Applicative        hiding (empty, many, optional)
--- import qualified Control.Monad.Catch        as Catch
 import           Text.Parsec                hiding ((<|>))
 import           Theory
 import           Theory.Sapic
@@ -313,5 +308,5 @@ actionprocess thy=
 -- | checks if process exists, if not -> error
 checkProcess :: String -> OpenTheory -> Parser (PlainProcess, [SapicLVar])
 checkProcess i thy = case lookupProcessDef i thy of
-    Just p -> return (get pBody p, fromMaybe [] $ get pVars p)
+    Just p -> pure (p._pBody, fromMaybe [] p._pVars)
     Nothing -> fail $ "process not defined: " ++ i

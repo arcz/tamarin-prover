@@ -1,4 +1,3 @@
-{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module OpenTheory
@@ -18,7 +17,6 @@ import Data.List
 import Data.Maybe
 import Data.Set qualified as S
 import Extension.Data.Label hiding (get)
-import Extension.Data.Label qualified as L
 import Items.OpenTheoryItem
 import Pretty
 import Rule
@@ -48,24 +46,24 @@ removeTranslationItems :: OpenTheory -> OpenTranslatedTheory
 removeTranslationItems thy =
   thy {_thyItems = newThyItems}
   where
-    newThyItems = map removeTranslationElement (L.get thyItems thy)
+    newThyItems = map removeTranslationElement thy._thyItems
 
 -- open translated theory again
 openTranslatedTheory :: OpenTranslatedTheory -> OpenTheory
 openTranslatedTheory thy =
   Theory
-    { _thyName = (L.get thyName thy),
-      _thyInFile = (L.get thyInFile thy),
-      _thyHeuristic = (L.get thyHeuristic thy),
-      _thyTactic = (L.get thyTactic thy),
-      _thySignature = (L.get thySignature thy),
-      _thyCache = (L.get thyCache thy),
-      _thyItems = newThyItems,
-      _thyOptions = (L.get thyOptions thy),
-      _thyIsSapic = (L.get thyIsSapic thy)
+    { _thyName = thy._thyName
+    , _thyInFile = thy._thyInFile
+    , _thyHeuristic = thy._thyHeuristic
+    , _thyTactic = thy._thyTactic
+    , _thySignature = thy._thySignature
+    , _thyCache = thy._thyCache
+    , _thyItems = newThyItems
+    , _thyOptions = thy._thyOptions
+    , _thyIsSapic = thy._thyIsSapic
     }
   where
-    newThyItems = mapMaybe addTranslationElement (L.get thyItems thy)
+    newThyItems = mapMaybe addTranslationElement thy._thyItems
     addTranslationElement :: TheoryItem r p () -> Maybe (TheoryItem r p s)
     addTranslationElement (RuleItem r) = Just $ RuleItem r
     addTranslationElement (LemmaItem l) = Just $ LemmaItem l
@@ -154,7 +152,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
     lemma _ = False
 
     -- build the lemma
-    l = fmap skeletonToIncrementalProof $ unprovenLemma lemmaName [SourceLemma] AllTraces formula
+    l = skeletonToIncrementalProof <$> unprovenLemma lemmaName [SourceLemma] AllTraces formula
 
     -- extract all rules from theory items
     rules = mapMaybe itemToRule items
@@ -163,7 +161,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
     allOutConcs :: [(ClosedProtoRule, LNTerm)]
     allOutConcs = do
       ru <- rules
-      (_, protoOrOutFactView -> Just t) <- enumConcs $ L.get cprRuleAC ru
+      (_, protoOrOutFactView -> Just t) <- enumConcs ru._cprRuleAC
       unifyProtC <- concatMap allProtSubterms t
       return (ru, unifyProtC)
 
@@ -171,7 +169,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
     allOutConcsNotProt :: [(ClosedProtoRule, LNFact)]
     allOutConcsNotProt = do
       ru <- rules
-      (_, unifyFactC) <- enumConcs $ L.get cprRuleAC ru
+      (_, unifyFactC) <- enumConcs ru._cprRuleAC
       -- we ignore cases where the fact is OutFact
       guard (getFactTag unifyFactC /= OutFact)
       return (ru, unifyFactC)
@@ -182,7 +180,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
     -- Generate a list of all cases that contain open chains
     chains =
       concatMap (multiply unsolvedChains . duplicate) $
-        concatMap (map snd . getDisj . L.get cdCases) raw
+        concatMap (map snd . getDisj . (._cdCases)) raw
 
     -- Given a list of theory items, a formula, a source with an open chain,
     -- return an updated list of theory items and an update formula for the sources lemma.
@@ -210,7 +208,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
               position <- findPos v term
               ruleSys <- nodeRuleSafe nodeid source
               rule <- find ((ruleName ruleSys ==) . ruleName) rules
-              premise <- lookupPrem pid $ L.get cprRuleAC rule
+              premise <- lookupPrem pid rule._cprRuleAC
               t' <- protoOrInFactView premise
               t <- atMay t' tidx
               return (terms position rule t ++ facts position rule t premise)
@@ -289,7 +287,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
                     -- generate fresh instance of conclusion, avoiding the premise variables
                     let fout = tout `renameAvoiding` unify
                     -- we ignore outputs of the same rule
-                    guard ((ruleName . L.get cprRuleE) rin /= (ruleName . L.get cprRuleE) rout)
+                    guard ((ruleName . (._cprRuleE)) rin /= (ruleName . (._cprRuleE)) rout)
                     -- check whether input and output are unifiable
                     guard (runMaude $ unifiableLNTerms unify fout)
                     return (rout, tout)
@@ -300,7 +298,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
                   do
                     (rout, fout) <- allOutConcsNotProt
                     -- we ignore outputs of the same rule
-                    guard ((ruleName . L.get cprRuleE) rin /= (ruleName . L.get cprRuleE) rout)
+                    guard ((ruleName . (._cprRuleE)) rin /= (ruleName . (._cprRuleE)) rout)
                     -- we ignore cases where the output fact and the input fact have different name
                     guard (factTagName (getFactTag unify) == factTagName (getFactTag fout))
                     -- check whether input and output are unifiable
@@ -315,7 +313,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
             { factTag =
                 ProtoFact
                   Linear
-                  ("AUTO_IN_TERM_" ++ printPosition pos ++ "_" ++ getRuleName (L.get cprRuleAC ru))
+                  ("AUTO_IN_TERM_" ++ printPosition pos ++ "_" ++ getRuleName ru._cprRuleAC)
                   (1 + length terms),
               factAnnotations = S.empty,
               factTerms = terms ++ [var]
@@ -325,7 +323,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
             { factTag =
                 ProtoFact
                   Linear
-                  ("AUTO_IN_FACT_" ++ printFactPosition pos ++ "_" ++ getRuleName (L.get cprRuleAC ru))
+                  ("AUTO_IN_FACT_" ++ printFactPosition pos ++ "_" ++ getRuleName ru._cprRuleAC)
                   (length terms),
               factAnnotations = S.empty,
               factTerms = terms
@@ -335,7 +333,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
             { factTag =
                 ProtoFact
                   Linear
-                  ("AUTO_OUT_TERM_" ++ printPosition pos ++ "_" ++ getRuleName (L.get cprRuleAC ru))
+                  ("AUTO_OUT_TERM_" ++ printPosition pos ++ "_" ++ getRuleName ru._cprRuleAC)
                   (length terms),
               factAnnotations = S.empty,
               factTerms = terms
@@ -345,7 +343,7 @@ addAutoSourcesLemma hnd lemmaName (ClosedRuleCache _ raw _ _) items =
             { factTag =
                 ProtoFact
                   Linear
-                  ("AUTO_OUT_FACT_" ++ printFactPosition pos ++ "_" ++ getRuleName (L.get cprRuleAC ru))
+                  ("AUTO_OUT_FACT_" ++ printFactPosition pos ++ "_" ++ getRuleName ru._cprRuleAC)
                   (length terms),
               factAnnotations = S.empty,
               factTerms = terms
@@ -560,7 +558,7 @@ addDefaultDiffLemma thy = fromMaybe thy $ addDiffLemma (unprovenDiffLemma "Obser
 
 -- Add the rule labels to an Open Diff Theory
 addProtoRuleLabel :: OpenProtoRule -> OpenProtoRule
-addProtoRuleLabel rule = addProtoDiffLabel rule ("DiffProto" ++ (getOpenProtoRuleName rule))
+addProtoRuleLabel rule = addProtoDiffLabel rule ("DiffProto" ++ getOpenProtoRuleName rule)
 
 -- Get the left openProtoRules
 getLeftProtoRule :: DiffProtoRule -> OpenProtoRule
@@ -575,10 +573,13 @@ getRightProtoRule (DiffProtoRule _ (Just (_, r))) = r
 -- Add the rule labels to an Open Diff Theory
 addIntrRuleLabels :: OpenDiffTheory -> OpenDiffTheory
 addIntrRuleLabels thy =
-  modify diffThyCacheLeft (map addRuleLabel) $ modify diffThyDiffCacheLeft (map addRuleLabel) $ modify diffThyDiffCacheRight (map addRuleLabel) $ modify diffThyCacheRight (map addRuleLabel) thy
+  modify diffThyCacheLeft (map addRuleLabel) $
+    modify diffThyDiffCacheLeft (map addRuleLabel) $
+      modify diffThyDiffCacheRight (map addRuleLabel) $
+        modify diffThyCacheRight (map addRuleLabel) thy
   where
     addRuleLabel :: IntrRuleAC -> IntrRuleAC
-    addRuleLabel rule = addDiffLabel rule ("DiffIntr" ++ (getRuleName rule))
+    addRuleLabel rule = addDiffLabel rule ("DiffIntr" ++ getRuleName rule)
 
 -- | Returns true if there are OpenProtoRules containing manual variants
 containsManualRuleVariants :: [TheoryItem OpenProtoRule p s] -> Bool
@@ -678,12 +679,12 @@ mergeLeftRightRulesDiff rs = map clean $ concatMap (foldr mergeRules []) $ group
 -- | Find the open protocol rule with the given name.
 lookupOpenProtoRule :: ProtoRuleName -> OpenTheory -> Maybe OpenProtoRule
 lookupOpenProtoRule name =
-  find ((name ==) . L.get (preName . rInfo . oprRuleE)) . theoryRules
+  find ((name ==) . (._oprRuleE._rInfo._preName)) . theoryRules
 
 -- | Find the open protocol rule with the given name.
 lookupOpenDiffProtoDiffRule :: ProtoRuleName -> OpenDiffTheory -> Maybe DiffProtoRule
 lookupOpenDiffProtoDiffRule name =
-  find ((name ==) . L.get (preName . rInfo . dprRule)) . diffTheoryDiffRules
+  find ((name ==) . (._dprRule._rInfo._preName)) . diffTheoryDiffRules
 
 -- | Add new protocol rules. Fails, if a protocol rule with the same name
 -- exists.
@@ -691,35 +692,33 @@ addOpenProtoRule :: OpenProtoRule -> OpenTheory -> Maybe OpenTheory
 addOpenProtoRule ru@(OpenProtoRule ruE ruAC) thy = do
   guard nameNotUsedForDifferentRule
   guard allRuleNamesAreDifferent
-  return $ modify thyItems (++ [RuleItem ru]) thy
+  pure $ modify thyItems (++ [RuleItem ru]) thy
   where
     nameNotUsedForDifferentRule =
-      maybe True (ru ==) $ lookupOpenProtoRule (L.get (preName . rInfo . oprRuleE) ru) thy
+      maybe True (ru ==) $ lookupOpenProtoRule ru._oprRuleE._rInfo._preName thy
     allRuleNamesAreDifferent =
-      (S.size (S.fromList (ruleName ruE : map ruleName ruAC)))
-        == ((length ruAC) + 1)
+      S.size (S.fromList (ruleName ruE : map ruleName ruAC)) == (length ruAC + 1)
 
 -- | Add a new protocol rules. Fails, if a protocol rule with the same name
 -- exists.
 addOpenProtoDiffRule :: DiffProtoRule -> OpenDiffTheory -> Maybe OpenDiffTheory
 addOpenProtoDiffRule ru@(DiffProtoRule _ Nothing) thy = do
   guard nameNotUsedForDifferentRule
-  return $ modify diffThyItems (++ [DiffRuleItem ru]) thy
+  pure $ modify diffThyItems (++ [DiffRuleItem ru]) thy
   where
     nameNotUsedForDifferentRule =
-      maybe True (ru ==) $ lookupOpenDiffProtoDiffRule (L.get (preName . rInfo . dprRule) ru) thy
+      maybe True (ru ==) $ lookupOpenDiffProtoDiffRule ru._dprRule._rInfo._preName thy
 addOpenProtoDiffRule ru@(DiffProtoRule _ (Just (lr, rr))) thy = do
   guard nameNotUsedForDifferentRule
   guard $ allRuleNamesAreDifferent lr
   guard $ allRuleNamesAreDifferent rr
   guard leftAndRightHaveSameName
-  return $ modify diffThyItems (++ [DiffRuleItem ru]) thy
+  pure $ modify diffThyItems (++ [DiffRuleItem ru]) thy
   where
     nameNotUsedForDifferentRule =
-      maybe True (ru ==) $ lookupOpenDiffProtoDiffRule (L.get (preName . rInfo . dprRule) ru) thy
+      maybe True (ru ==) $ lookupOpenDiffProtoDiffRule ru._dprRule._rInfo._preName thy
     allRuleNamesAreDifferent (OpenProtoRule ruE ruAC) =
-      (S.size (S.fromList (ruleName ruE : map ruleName ruAC)))
-        == ((length ruAC) + 1)
+      S.size (S.fromList (ruleName ruE : map ruleName ruAC)) == (length ruAC + 1)
     leftAndRightHaveSameName = ruleName ru == ruleName lr && ruleName lr == ruleName rr
 
 -- | Add new protocol rules. Fails, if a protocol rule with the same name
@@ -727,28 +726,28 @@ addOpenProtoDiffRule ru@(DiffProtoRule _ (Just (lr, rr))) thy = do
 addProtoRule :: ProtoRuleE -> OpenTheory -> Maybe OpenTheory
 addProtoRule ruE thy = do
   guard nameNotUsedForDifferentRule
-  return $ modify thyItems (++ [RuleItem (OpenProtoRule ruE [])]) thy
+  pure $ modify thyItems (++ [RuleItem (OpenProtoRule ruE [])]) thy
   where
     nameNotUsedForDifferentRule =
-      maybe True (ruE ==) $ fmap (L.get oprRuleE) $ lookupOpenProtoRule (L.get (preName . rInfo) ruE) thy
+      maybe True ((ruE ==) . ((._oprRuleE))) (lookupOpenProtoRule ruE._rInfo._preName thy)
 
 -- | Add a new protocol rules. Fails, if a protocol rule with the same name
 -- exists.
 addProtoDiffRule :: ProtoRuleE -> OpenDiffTheory -> Maybe OpenDiffTheory
 addProtoDiffRule ruE thy = do
   guard nameNotUsedForDifferentRule
-  return $ modify diffThyItems (++ [DiffRuleItem (DiffProtoRule ruE Nothing)]) thy
+  pure $ modify diffThyItems (++ [DiffRuleItem (DiffProtoRule ruE Nothing)]) thy
   where
     nameNotUsedForDifferentRule =
-      maybe True (ruE ==) $ fmap (L.get dprRule) $ lookupOpenDiffProtoDiffRule (L.get (preName . rInfo) ruE) thy
+      maybe True ((ruE ==) . ((._dprRule))) (lookupOpenDiffProtoDiffRule ruE._rInfo._preName thy)
 
 -- | Add intruder proof rules after Translate.
 addIntrRuleACsAfterTranslate :: [IntrRuleAC] -> OpenTranslatedTheory -> OpenTranslatedTheory
-addIntrRuleACsAfterTranslate rs' = modify (thyCache) (\rs -> nub $ rs ++ rs')
+addIntrRuleACsAfterTranslate rs' = modify thyCache (\rs -> nub $ rs ++ rs')
 
 -- | Add intruder proof rules.
 addIntrRuleACs :: [IntrRuleAC] -> OpenTheory -> OpenTheory
-addIntrRuleACs rs' = modify (thyCache) (\rs -> nub $ rs ++ rs')
+addIntrRuleACs rs' = modify thyCache (\rs -> nub $ rs ++ rs')
 
 -- | Add intruder proof rules for all diff and non-diff caches.
 addIntrRuleACsDiffAll :: [IntrRuleAC] -> OpenDiffTheory -> OpenDiffTheory
@@ -764,33 +763,33 @@ addIntrRuleACsDiffBoth rs' thy = addIntrRuleACsDiffRight rs' (addIntrRuleACsDiff
 
 -- | Add intruder proof rules to left diff cache.
 addIntrRuleACsDiffLeftDiff :: [IntrRuleAC] -> OpenDiffTheory -> OpenDiffTheory
-addIntrRuleACsDiffLeftDiff rs' thy = modify (diffThyDiffCacheLeft) (\rs -> nub $ rs ++ rs') thy
+addIntrRuleACsDiffLeftDiff rs' = modify diffThyDiffCacheLeft (\rs -> nub $ rs ++ rs')
 
 -- | Add intruder proof rules to left cache.
 addIntrRuleACsDiffLeft :: [IntrRuleAC] -> OpenDiffTheory -> OpenDiffTheory
-addIntrRuleACsDiffLeft rs' thy = modify (diffThyCacheLeft) (\rs -> nub $ rs ++ rs') thy
+addIntrRuleACsDiffLeft rs' = modify diffThyCacheLeft (\rs -> nub $ rs ++ rs')
 
 -- | Add intruder proof rules to right diff cache.
 addIntrRuleACsDiffRightDiff :: [IntrRuleAC] -> OpenDiffTheory -> OpenDiffTheory
-addIntrRuleACsDiffRightDiff rs' thy = modify (diffThyDiffCacheRight) (\rs -> nub $ rs ++ rs') thy
+addIntrRuleACsDiffRightDiff rs' = modify diffThyDiffCacheRight (\rs -> nub $ rs ++ rs')
 
 -- | Add intruder proof rules to right cache.
 addIntrRuleACsDiffRight :: [IntrRuleAC] -> OpenDiffTheory -> OpenDiffTheory
-addIntrRuleACsDiffRight rs' thy = modify (diffThyCacheRight) (\rs -> nub $ rs ++ rs') thy
+addIntrRuleACsDiffRight rs' = modify diffThyCacheRight (\rs -> nub $ rs ++ rs')
 
 -- | Normalize the theory representation such that they remain semantically
 -- equivalent. Use this function when you want to compare two theories (quite
 -- strictly) for semantic equality; e.g., when testing the parser.
 normalizeTheory :: OpenTheory -> OpenTheory
 normalizeTheory =
-  L.modify thyCache sort
-    . L.modify
+  modify thyCache sort
+    . modify
       thyItems
       ( \items -> do
           item <- items
           return $ case item of
             LemmaItem lem ->
-              LemmaItem $ L.modify lProof stripProofAnnotations $ lem
+              LemmaItem $ modify lProof stripProofAnnotations lem
             RuleItem _ -> item
             TextItem _ -> item
             ConfigBlockItem _ -> item
@@ -836,7 +835,7 @@ prettyOpenProtoRuleAsClosedRule (OpenProtoRule ruE []) =
 prettyOpenProtoRuleAsClosedRule (OpenProtoRule _ [ruAC@(Rule (ProtoRuleACInfo _ _ (Disj disj) _) _ _ _ _)]) =
   prettyProtoRuleACasE ruAC
     $--$ ( nest 2 $
-             prettyLoopBreakers (L.get rInfo ruAC)
+             prettyLoopBreakers ruAC._rInfo
                $-$ if length disj == 1
                  then multiComment_ ["has exactly the trivial AC variant"]
                  else multiComment $ prettyProtoRuleAC ruAC
@@ -864,7 +863,7 @@ prettyDiffRule (DiffProtoRule ruE (Just (ruL, ruR))) =
 
 -- | Pretty print an either rule
 prettyEitherRule :: (HighlightDocument d) => (Side, OpenProtoRule) -> d
-prettyEitherRule (_, p) = prettyProtoRuleE $ L.get oprRuleE p
+prettyEitherRule (_, p) = prettyProtoRuleE p._oprRuleE
 
 -- | Pretty print an open theory.
 prettyOpenTheory :: (HighlightDocument d) => OpenTheory -> d
@@ -917,19 +916,19 @@ prettyDiffTheory ::
   d
 prettyDiffTheory ppSig ppCache ppRule ppDiffPrf ppPrf thy =
   vsep $
-    [ kwTheoryHeader $ text $ L.get diffThyName thy,
-      lineComment_ "Function signature and definition of the equational theory E",
-      ppSig $ L.get diffThySignature thy,
-      if thyT == [] then text "" else vcat $ map prettyTactic thyT,
-      if thyH == [] then text "" else text "heuristic: " <> text (prettyGoalRankings thyH),
-      prettyMacros $ diffTheoryMacros thy,
-      ppCache $ L.get diffThyCacheLeft thy,
-      ppCache $ L.get diffThyCacheRight thy,
-      ppCache $ L.get diffThyDiffCacheLeft thy,
-      ppCache $ L.get diffThyDiffCacheRight thy
+    [ kwTheoryHeader $ text thy._diffThyName
+    , lineComment_ "Function signature and definition of the equational theory E"
+    , ppSig thy._diffThySignature
+    , if null thyT then text "" else vcat $ map prettyTactic thyT
+    , if null thyH then text "" else text "heuristic: " <> text (prettyGoalRankings thyH)
+    , prettyMacros $ diffTheoryMacros thy
+    , ppCache thy._diffThyCacheLeft
+    , ppCache thy._diffThyCacheRight
+    , ppCache thy._diffThyDiffCacheLeft
+    , ppCache thy._diffThyDiffCacheRight
     ]
-      ++ parMap rdeepseq ppItem (L.get diffThyItems thy)
-      ++ [kwEnd]
+    ++ parMap rdeepseq ppItem thy._diffThyItems
+    ++ [kwEnd]
   where
     ppItem =
       foldDiffTheoryItem
@@ -941,5 +940,5 @@ prettyDiffTheory ppSig ppCache ppRule ppDiffPrf ppPrf thy =
         (const emptyDoc)
         (uncurry prettyFormalComment)
         prettyConfigBlock
-    thyH = L.get diffThyHeuristic thy
-    thyT = L.get diffThyTactic thy
+    thyH = thy._diffThyHeuristic
+    thyT = thy._diffThyTactic

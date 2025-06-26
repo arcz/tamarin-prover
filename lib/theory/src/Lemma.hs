@@ -1,5 +1,5 @@
-module Lemma (
-  LemmaAttribute(..)
+module Lemma
+  ( LemmaAttribute(..)
   , TraceQuantifier(..)
   , ProtoLemma(..)
   , DiffLemma(..)
@@ -17,35 +17,33 @@ module Lemma (
   , prettyDiffLemmaName
   , prettyTraceQuantifier
   , prettyDiffLemma
-  , prettyEitherLemma) where
+  , prettyEitherLemma
+) where
 
-import Data.Label as L
-import Theory.Constraint.System
-import Items.LemmaItem
-
-
-import Text.PrettyPrint.Highlight
-import Theory.Text.Pretty
-import Theory.Model
---import Theory.Constraint.Solver
 import Data.List (intercalate)
+import Text.PrettyPrint.Highlight
+
+import Items.LemmaItem
+import Theory.Constraint.System
+import Theory.Model
+import Theory.Text.Pretty
 
 
 -- | The source kind allowed for a lemma.
 lemmaSourceKind :: Lemma p -> SourceKind
 lemmaSourceKind lem
-  | SourceLemma `elem` L.get lAttributes lem = RawSource
-  | otherwise                                = RefinedSource
+  | SourceLemma `elem` lem._lAttributes = RawSource
+  | otherwise                           = RefinedSource
 
 -- | Adds the LHS lemma attribute.
 addLeftLemma :: ProtoLemma f p -> ProtoLemma f p
 addLeftLemma lem =
-     L.set lAttributes (LHSLemma:(L.get lAttributes lem)) lem
+  lem { _lAttributes = LHSLemma:lem._lAttributes }
 
 -- | Adds the RHS lemma attribute.
 addRightLemma :: ProtoLemma f p -> ProtoLemma f p
 addRightLemma lem =
-     L.set lAttributes (RHSLemma:(L.get lAttributes lem)) lem
+  lem { _lAttributes = RHSLemma:lem._lAttributes }
 
 -- Lemma queries
 ----------------------------------
@@ -58,30 +56,30 @@ toSystemTraceQuantifier ExistsTrace = ExistsSomeTrace
 -- | True iff the lemma can be used as a source lemma.
 isSourceLemma :: Lemma p -> Bool
 isSourceLemma lem =
-     (AllTraces == L.get lTraceQuantifier lem)
-  && (SourceLemma `elem` L.get lAttributes lem)
+     (AllTraces == lem._lTraceQuantifier)
+  && (SourceLemma `elem` lem._lAttributes)
 
 -- | True iff the lemma is a LHS lemma.
 isLeftLemma :: ProtoLemma f p -> Bool
 isLeftLemma lem =
-     (LHSLemma `elem` L.get lAttributes lem)
+  LHSLemma `elem` lem._lAttributes
 
 -- | True iff the lemma is a RHS lemma.
 isRightLemma :: ProtoLemma f p -> Bool
 isRightLemma lem =
-     (RHSLemma `elem` L.get lAttributes lem)
+  RHSLemma `elem` lem._lAttributes
 
 -- -- | True iff the lemma is a Both lemma.
 -- isBothLemma :: Lemma p -> Bool
 -- isBothLemma lem =
---      (BothLemma `elem` L.get lAttributes lem)
+--      BothLemma `elem` lem._lAttributes
 
 -- | Pretty print the lemma name together with its attributes.
 prettyLemmaName :: HighlightDocument d => Lemma p -> d
-prettyLemmaName l = case L.get lAttributes l of
-      [] -> text (L.get lName l)
-      as -> text (L.get lName l) <->
-            (brackets $ fsep $ punctuate comma $ map prettyLemmaAttribute as)
+prettyLemmaName l = case l._lAttributes of
+  [] -> text l._lName
+  as -> text l._lName <->
+    (brackets $ fsep $ punctuate comma $ map prettyLemmaAttribute as)
 
 prettyLemmaAttribute :: Document d => LemmaAttribute -> d
 prettyLemmaAttribute SourceLemma        = text "sources"
@@ -89,7 +87,7 @@ prettyLemmaAttribute ReuseLemma         = text "reuse"
 prettyLemmaAttribute ReuseDiffLemma     = text "diff_reuse"
 prettyLemmaAttribute InvariantLemma     = text "use_induction"
 prettyLemmaAttribute (HideLemma s)      = text ("hide_lemma=" ++ s)
-prettyLemmaAttribute (LemmaHeuristic h) = text ("heuristic=" ++ (prettyGoalRankings h))
+prettyLemmaAttribute (LemmaHeuristic h) = text ("heuristic=" ++ prettyGoalRankings h)
 prettyLemmaAttribute (LemmaModule h)    = text ("output=[" ++ intercalate "," (map show h)  ++ "]")
 prettyLemmaAttribute LHSLemma           = text "left"
 prettyLemmaAttribute RHSLemma           = text "right"
@@ -99,27 +97,27 @@ prettyLemmaAttribute _                  = emptyDoc
 
 -- | Pretty print the diff lemma name
 prettyDiffLemmaName :: HighlightDocument d => DiffLemma p -> d
-prettyDiffLemmaName l = text ((L.get lDiffName l))
+prettyDiffLemmaName l = text l._lDiffName
 
 -- | Pretty print a lemma.
 prettyLemma :: HighlightDocument d => (p -> d) -> Lemma p -> d
 prettyLemma ppPrf lem =
     kwLemma <-> prettyLemmaName lem <> colon $-$
     (nest 2 $
-      sep [ prettyTraceQuantifier $ L.get lTraceQuantifier lem
-          , doubleQuotes $ prettyLNFormula $ L.get lFormula lem
+      sep [ prettyTraceQuantifier lem._lTraceQuantifier
+          , doubleQuotes $ prettyLNFormula lem._lFormula
           ]
     )
     $-$
-    ppLNFormulaGuarded (L.get lFormula lem)
+    ppLNFormulaGuarded lem._lFormula
     $-$
-    ppPrf (L.get lProof lem)
+    ppPrf lem._lProof
   where
     ppLNFormulaGuarded fm = case formulaToGuarded fm of
         Left err -> multiComment $
             text "conversion to guarded formula failed:" $$
             nest 2 err
-        Right gf -> case toSystemTraceQuantifier $ L.get lTraceQuantifier lem of
+        Right gf -> case toSystemTraceQuantifier lem._lTraceQuantifier of
           ExistsNoTrace -> multiComment
             ( text "guarded formula characterizing all counter-examples:" $-$
               doubleQuotes (prettyGuarded (gnot gf)) )
@@ -132,20 +130,20 @@ prettyEitherLemma :: HighlightDocument d => (p -> d) -> (Side, Lemma p) -> d
 prettyEitherLemma ppPrf (_, lem) =
     kwLemma <-> prettyLemmaName lem <> colon $-$
     (nest 2 $
-      sep [ prettyTraceQuantifier $ L.get lTraceQuantifier lem
-          , doubleQuotes $ prettyLNFormula $ L.get lFormula lem
+      sep [ prettyTraceQuantifier lem._lTraceQuantifier
+          , doubleQuotes $ prettyLNFormula lem._lFormula
           ]
     )
     $-$
-    ppLNFormulaGuarded (L.get lFormula lem)
+    ppLNFormulaGuarded lem._lFormula
     $-$
-    ppPrf (L.get lProof lem)
+    ppPrf lem._lProof
   where
     ppLNFormulaGuarded fm = case formulaToGuarded fm of
         Left err -> multiComment $
             text "conversion to guarded formula failed:" $$
             nest 2 err
-        Right gf -> case toSystemTraceQuantifier $ L.get lTraceQuantifier lem of
+        Right gf -> case toSystemTraceQuantifier lem._lTraceQuantifier of
           ExistsNoTrace -> multiComment
             ( text "guarded formula characterizing all counter-examples:" $-$
               doubleQuotes (prettyGuarded (gnot gf)) )
@@ -158,7 +156,7 @@ prettyDiffLemma :: HighlightDocument d => (p -> d) -> DiffLemma p -> d
 prettyDiffLemma ppPrf lem =
     kwDiffLemma <-> prettyDiffLemmaName lem <> colon
     $-$
-    ppPrf (L.get lDiffProof lem)
+    ppPrf lem._lDiffProof
 
 -- | Pretty print a 'TraceQuantifier'.
 prettyTraceQuantifier :: Document d => TraceQuantifier -> d

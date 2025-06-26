@@ -1,7 +1,3 @@
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE PatternGuards          #-}
-
 -- |
 -- Copyright   : (c) 2010-2012 Simon Meier, Benedikt Schmidt
 --               contributing in 2019: Robert Künnemann, Johannes Wocker
@@ -11,8 +7,8 @@
 --
 -- Parsing protocol theories. See the MANUAL for a high-level description of
 -- the syntax.
-module Theory.Text.Parser (
-    parseOpenTheory
+module Theory.Text.Parser
+  ( parseOpenTheory
   , parseOpenTheoryString
   , parseOpenDiffTheory
   , parseOpenDiffTheoryString
@@ -27,32 +23,30 @@ module Theory.Text.Parser (
   , liftedAddRestriction
   ) where
 
-import           Prelude                    hiding (id, (.))
-import           Data.Label
-import           Data.Maybe
--- import           Data.Monoid                hiding (Last)
-import qualified Data.Set                   as S
-import           System.FilePath
-import           Control.Category
-import           Control.Monad
-import           Control.Applicative        hiding (empty, many, optional)
-import qualified Control.Monad.Catch        as Catch
+import Prelude hiding (id, (.))
+import Data.Label
+import Data.Maybe
+import Data.Set qualified as S
+import System.FilePath
+import Control.Category
+import Control.Monad
+import Control.Applicative hiding (empty, many, optional)
+import Control.Monad.Catch qualified as Catch
 import System.IO.Unsafe (unsafePerformIO)
-import           Text.Parsec                hiding ((<|>))
-import           Text.PrettyPrint.Class     (render)
-import           Theory
-import           Theory.Text.Parser.Token
+import Text.Parsec hiding ((<|>))
+import Text.PrettyPrint.Class (render)
+import Theory
+import Theory.Text.Parser.Token
 
-import           Theory.Text.Parser.Accountability
-import           Theory.Text.Parser.Lemma
-import           Theory.Text.Parser.Rule
-import           Theory.Text.Parser.Macro
+import Theory.Text.Parser.Accountability
+import Theory.Text.Parser.Lemma
+import Theory.Text.Parser.Rule
+import Theory.Text.Parser.Macro
 import Theory.Text.Parser.Exceptions
 import Theory.Text.Parser.Signature
 import Theory.Text.Parser.Tactics
 import Theory.Text.Parser.Restriction
 import Theory.Text.Parser.Sapic
-import Debug.Trace
 
 ------------------------------------------------------------------------------
 -- Lexing and parsing theory files and proof methods
@@ -221,7 +215,7 @@ theory inFile = do
     if block == "configuration"
         then do
             fileArgs <- stringLiteral <* symbol_ "begin"
-            addItems inFile (set thyInFile (fromMaybe "" inFile) 
+            addItems inFile (set thyInFile (fromMaybe "" inFile)
               $ set thyName thyId (modify thyItems (++ [ConfigBlockItem fileArgs]) defThy)) <* symbol_ "end"
         else do
             addItems inFile (set thyInFile (fromMaybe "" inFile) $ set thyName thyId defThy) <* symbol_ "end"
@@ -360,7 +354,7 @@ theory inFile = do
     -- add process to theoryitems
     liftedAddProcessDef thy pDef = case addProcessDef pDef thy of
         Just thy' -> return thy'
-        Nothing   -> fail $ "duplicate process: " ++ get pName pDef
+        Nothing   -> fail $ "duplicate process: " ++ pDef._pName
 
     liftedAddHeuristic thy h = case addHeuristic h thy of
         Just thy' -> return thy'
@@ -370,9 +364,9 @@ theory inFile = do
         Just thy' -> return thy'
         Nothing   -> fail $ "default tactic already defined"
 
-    liftedAddMacros thy m = case addMacros m thy of 
+    liftedAddMacros thy m = case addMacros m thy of
         Just thy' -> return thy'
-        Nothing   -> fail $ "macro already defined"
+        Nothing   -> fail "macro already defined"
 
 
 -- | Parse a diff theory.

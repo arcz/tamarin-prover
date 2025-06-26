@@ -11,5 +11,6 @@ resolver: lts-22.39
 ghc-options:
   "$everything": -Wall
 nix:
+  enable: true
   packages: [ zlib ]
 

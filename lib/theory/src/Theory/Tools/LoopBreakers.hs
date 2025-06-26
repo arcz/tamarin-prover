@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- |
 -- Copyright   : (c) 2012 Simon Meier
 -- License     : GPL v3 (see LICENSE)

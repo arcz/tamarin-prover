@@ -1,9 +1,3 @@
-{-# LANGUAGE BangPatterns     #-}
-{-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE TupleSections    #-}
--- FIXME: better types in checkLevel
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE DeriveAnyClass   #-}
 -- |
 -- Copyright   : (c) 2010-2012 Simon Meier & Benedikt Schmidt
@@ -103,26 +97,23 @@ module Theory.Proof (
 
 ) where
 
-import           GHC.Generics                     (Generic)
+import GHC.Generics                     (Generic)
 
-import           Data.Binary
-import           Data.List
-import qualified Data.Label                       as L
-import qualified Data.Map                         as M
-import           Data.Maybe
--- import           Data.Monoid
+import Data.Binary
+import Data.List
+import Data.Map qualified as M
+import Data.Maybe
 
-import           Debug.Trace
+import Debug.Trace
 
-import           Control.Basics
-import           Control.DeepSeq
-import qualified Control.Monad.State              as S
-import           Control.Parallel.Strategies
+import Control.Basics
+import Control.DeepSeq
+import Control.Monad.State qualified as S
+import Control.Parallel.Strategies
 
-import           Theory.Constraint.Solver
-import           Theory.Model
-import           Theory.Text.Pretty
-
+import Theory.Constraint.Solver
+import Theory.Model
+import Theory.Text.Pretty
 
 
 ------------------------------------------------------------------------------
@@ -679,7 +670,7 @@ firstDiffProver = foldr orelseDiff failDiffProver
 -- | Diff Prover that does one contradiction step if possible.
 contradictionDiffProver :: DiffProver
 contradictionDiffProver = DiffProver $ \ctxt d sys prf ->
-  case (L.get dsCurrentRule sys, L.get dsSide sys, L.get dsSystem sys) of
+  case (sys._dsCurrentRule, sys._dsSide, sys._dsSystem) of
     (Just _, Just s, Just sys') -> runDiffProver
               (firstDiffProver $ map oneStepDiffProver $
                   (DiffBackwardSearchStep . Finished . Contradictory . Just <$> contradictions (eitherProofContext ctxt s) sys'))
@@ -704,7 +695,7 @@ data AutoProver = AutoProver
 
 selectHeuristic :: AutoProver -> ProofContext -> Heuristic ProofContext
 selectHeuristic prover ctx = setQuitOnEmpty $ fromMaybe (defaultHeuristic False)
-                             (apDefaultHeuristic prover <|> L.get pcHeuristic ctx)
+                             (apDefaultHeuristic prover <|> ctx._pcHeuristic)
   where
     setQuitOnEmpty :: Heuristic ProofContext -> Heuristic ProofContext
     setQuitOnEmpty (Heuristic rankings) = Heuristic (map aux rankings)
@@ -717,15 +708,15 @@ selectHeuristic prover ctx = setQuitOnEmpty $ fromMaybe (defaultHeuristic False)
 
 selectDiffHeuristic :: AutoProver -> DiffProofContext -> Heuristic ProofContext
 selectDiffHeuristic prover ctx = fromMaybe (defaultHeuristic True)
-                                 (apDefaultHeuristic prover <|> L.get pcHeuristic (L.get dpcPCLeft ctx))
+                                 (apDefaultHeuristic prover <|> ctx._dpcPCLeft._pcHeuristic)
 
 selectTactic :: AutoProver -> ProofContext -> [Tactic ProofContext]
 selectTactic prover ctx = fromMaybe [defaultTactic]
-                             (apDefaultTactic prover <|> L.get pcTactic ctx)
+                             (apDefaultTactic prover <|> ctx._pcTactic)
 
 selectDiffTactic :: AutoProver -> DiffProofContext -> [Tactic ProofContext]
 selectDiffTactic prover ctx = fromMaybe [defaultTactic]
-                                 (apDefaultTactic prover <|> L.get pcTactic (L.get dpcPCLeft ctx))
+                                 (apDefaultTactic prover <|> ctx._dpcPCLeft._pcTactic)
 
 runAutoProver :: AutoProver -> Prover
 runAutoProver aut@(AutoProver _ _  bound cut _) =
@@ -1117,7 +1108,7 @@ showDiffProofStatus CompleteProof     = "verified"
 showDiffProofStatus UnfinishableProof = "analysis cannot be finished (reducible operators in subterms)"
 showDiffProofStatus IncompleteProof   = "analysis incomplete"
 showDiffProofStatus UndeterminedProof = "analysis undetermined"
-showDiffProofStatus InvalidatedProof  = "proof has been invalidated" 
+showDiffProofStatus InvalidatedProof  = "proof has been invalidated"
 
 -- Instances
 --------------------

@@ -1,37 +1,24 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
-module Rule (
-    module Rule
-    ,module Items.RuleItem
-)where
+module Rule
+  ( module Rule
+  , module Items.RuleItem
+  )
+where
 
 import Items.RuleItem
 
-import           Prelude                             hiding (id, (.))
+import Control.Monad.Reader
 
-import           Data.List
+import Data.List
+import Data.Set qualified as S
 
-import qualified Data.Set                            as S
-
-import           Control.Basics
-import           Control.Category
-import           Control.Monad.Reader
-
-import qualified Extension.Data.Label                as L
-
-import           Theory.Model
-import           Theory.Proof
-import           Theory.Tools.InjectiveFactInstances
-import           Theory.Tools.RuleVariants
-import           Theory.Tools.IntruderRules
-
-import           Term.Positions
-import           Term.Macro
+import Term.Positions
+import Term.Macro
 import Theory.Constraint.Solver.Sources (IntegerParameters)
-
-
-
+import Theory.Model
+import Theory.Proof
+import Theory.Tools.InjectiveFactInstances
+import Theory.Tools.RuleVariants
+import Theory.Tools.IntruderRules
 
 
 -- | Get an OpenProtoRule's name
@@ -40,7 +27,7 @@ getOpenProtoRuleName (OpenProtoRule ruE _) = getRuleName ruE
 
 -- | Add the diff label to an OpenProtoRule
 addProtoDiffLabel :: OpenProtoRule -> String -> OpenProtoRule
-addProtoDiffLabel (OpenProtoRule ruE ruAC) label = OpenProtoRule (addDiffLabel ruE label) (fmap ((flip addDiffLabel) label) ruAC)
+addProtoDiffLabel (OpenProtoRule ruE ruAC) label = OpenProtoRule (addDiffLabel ruE label) (fmap (`addDiffLabel` label) ruAC)
 
 equalOpenRuleUpToDiffAnnotation :: OpenProtoRule -> OpenProtoRule -> Bool
 equalOpenRuleUpToDiffAnnotation (OpenProtoRule ruE1 ruAC1) (OpenProtoRule ruE2 ruAC2) =
@@ -58,14 +45,14 @@ intruderRules rules = do
 
 -- | Open a rule cache. Variants and precomputed case distinctions are dropped.
 openRuleCache :: ClosedRuleCache -> OpenRuleCache
-openRuleCache = intruderRules . L.get crcRules
+openRuleCache = intruderRules . (._crcRules)
 
 -- | Open a protocol rule; i.e., drop variants and proof annotations.
 openProtoRule :: ClosedProtoRule -> OpenProtoRule
 openProtoRule r = OpenProtoRule ruleE ruleAC
   where
-    ruleE   = L.get cprRuleE r
-    ruleAC' = L.get cprRuleAC r
+    ruleE   = r._cprRuleE
+    ruleAC' = r._cprRuleAC
     ruleAC  = if equalUpToTerms ruleAC' ruleE
                then []
                else [ruleAC']
@@ -77,16 +64,16 @@ unfoldRuleVariants (ClosedProtoRule ruE ruAC@(Rule ruACInfoOld ps cs as nvs))
    | isTrivialProtoVariantAC ruAC ruE = [ClosedProtoRule ruE ruAC]
    | otherwise = map toClosedProtoRule variants
         where
-          ruACInfo i = ProtoRuleACInfo (rName i (L.get pracName ruACInfoOld)) rAttributes (Disj [emptySubstVFresh]) loopBreakers
-          rAttributes = L.get pracAttributes ruACInfoOld
-          loopBreakers = L.get pracLoopBreakers ruACInfoOld
+          ruACInfo i = ProtoRuleACInfo (rName i ruACInfoOld._pracName) rAttributes (Disj [emptySubstVFresh]) loopBreakers
+          rAttributes = ruACInfoOld._pracAttributes
+          loopBreakers = ruACInfoOld._pracLoopBreakers
           rName i oldName = case oldName of
             FreshRule -> FreshRule
             StandRule s -> StandRule $ s ++ "___VARIANT_" ++ show i
 
           toClosedProtoRule (i, (ps', cs', as', nvs'))
             = ClosedProtoRule ruE (Rule (ruACInfo i) ps' cs' as' nvs')
-          variants = zip [1::Int ..] $ map (\x -> apply x (ps, cs, as, nvs)) $ substs (L.get pracVariants ruACInfoOld)
+          variants = zip [1::Int ..] $ map (\x -> apply x (ps, cs, as, nvs)) $ substs ruACInfoOld._pracVariants
           substs (Disj s) = map (`freshToFreeAvoiding` ruAC) s
 
 -- | Close a protocol rule; i.e., compute AC variant and source assertion
@@ -133,20 +120,20 @@ closeRuleCache parameters restrictions typAsms forcedInjFacts sig protoRules int
         classifiedRules rawSources refinedSources injFactInstances
   where
     ctxt0 = ProofContext
-        sig classifiedRules injFactInstances RawSource [] AvoidInduction Nothing Nothing 
+        sig classifiedRules injFactInstances RawSource [] AvoidInduction Nothing Nothing
         (error "closeRuleCache: trace quantifier should not matter here")
         (error "closeRuleCache: lemma name should not matter here") [] verbose isdiff
         (all isSubtermRule {-- $ trace (show destr ++ " - " ++ show (map isSubtermRule destr))-} destr) (any isConstantRule destr)
         isSapic
 
     -- Maude handle
-    hnd = L.get sigmMaudeHandle sig
-    reducibles = reducibleFunSyms $ mhMaudeSig hnd
+    hnd = sig._sigMaudeInfo
+    reducibles = reducibleFunSyms hnd.mhMaudeSig
 
     forcedInjFacts' = S.map (\x -> (x, replicate (factTagArity x) [Unspecified])) forcedInjFacts
     -- inj fact instances
     injFactInstances = forcedInjFacts' `S.union`
-        simpleInjectiveFactInstances reducibles (L.get cprRuleE <$> protoRules)
+        simpleInjectiveFactInstances reducibles ((._cprRuleE) <$> protoRules)
 
     -- precomputing the case distinctions: we make sure to only add safety
     -- restrictions. Otherwise, it wouldn't be sound to use the precomputed case
@@ -156,11 +143,11 @@ closeRuleCache parameters restrictions typAsms forcedInjFacts sig protoRules int
     refinedSources     = refineWithSourceAsms parameters typAsms ctxt0 rawSources
 
     -- close intruder rules
-    intrRulesAC = concat $ map (closeIntrRule hnd) intrRules
+    intrRulesAC = concatMap (closeIntrRule hnd) intrRules
 
     -- classifying the rules
-    rulesAC = (fmap IntrInfo                      <$> intrRulesAC) ++
-              ((fmap ProtoInfo . L.get cprRuleAC) <$> protoRules)
+    rulesAC = (fmap IntrInfo                  <$> intrRulesAC) ++
+              (fmap ProtoInfo . (._cprRuleAC) <$> protoRules)
 
     anyOf ps = partition (\x -> any ($ x) ps)
 

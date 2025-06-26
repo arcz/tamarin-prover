@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 -- |
 -- Copyright   : (c) 2019 Robert Künnemann
 -- License     : GPL v3 (see LICENSE)
@@ -10,13 +8,14 @@
 -- Data types for SAPIC processes in theories
 module Theory.Sapic (
     -- convenience exports
-      module Theory.Sapic.Term
-    , module Theory.Sapic.Process
-    , module Theory.Sapic.Annotation
-    , module Theory.Sapic.Position
-    , module Theory.Sapic.Substitution
-    , module Theory.Sapic.PlainProcess
-) where
+    module Theory.Sapic.Term
+  , module Theory.Sapic.Process
+  , module Theory.Sapic.Annotation
+  , module Theory.Sapic.Position
+  , module Theory.Sapic.Substitution
+  , module Theory.Sapic.PlainProcess
+  ) where
+
 import Theory.Sapic.Term
 import Theory.Sapic.Process
 import Theory.Sapic.Annotation
